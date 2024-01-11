@@ -1,0 +1,29 @@
+{
+    "id": "full-speed-ahead",
+    "title": "Full Speed Ahead",
+	"socket": true,
+    "description": "Rotates 'vehicle' icons so that the starboard side is facing forward, giving the illusion the vehicle is moving",
+    "authors": [
+        {
+            "name": "knoself",
+            "discord": "knoself"
+        }
+    ],
+    "esmodules": [
+        "scripts/rotateIcon.js"
+    ],
+    "version": "0.1",
+    "compatibility": {
+        "minimum": 10,
+        "verified": "11.312"
+    },
+    "manifest": "https://github.com/edgedoggo/fvtt-full-speed-ahead/releases/download/latest/module.json",
+    "download": "https://github.com/edgedoggo/fvtt-full-speed-ahead/releases/download/latest/full-speed-ahead.zip",
+    "minimumCoreVersion": "10.0",
+    "compatibleCoreVersion": "11.312",
+    "socket": true,
+    "scripts": ["scripts/rotateIcon.js"],
+    "languages": [],
+    "packs": [],
+    "dependencies": []
+}
