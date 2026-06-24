@@ -18,7 +18,7 @@ Full Speed Ahead rotates vehicle tokens toward their movement destination, can s
 Use the manifest URL from the latest release:
 
 ```text
-https://github.com/edgedoggo/fvtt-full-speed-ahead/releases/latest/download/module.json
+https://github.com/edgedoggo/full-speed-ahead/releases/latest/download/module.json
 ```
 
 ## Notes
