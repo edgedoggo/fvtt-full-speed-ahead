@@ -326,7 +326,7 @@ function startVehicleMotionEffects(tokenDocument, options) {
 
     const controller = {
         destroyed: false,
-        thruster: game.settings.get(MODULE_ID, "enableThrusterEffect") ? createAttachedThruster(token) : null,
+        thruster: game.settings.get(MODULE_ID, "enableThrusterEffect") ? createUnderTokenThruster(token) : null,
         lastRotationUpdate: 0,
         currentRotation: motion.startRotation
     };
@@ -428,12 +428,17 @@ function stopVehicleMotionEffects(tokenId) {
     activeMotionEffects.delete(tokenId);
 }
 
-function createAttachedThruster(token) {
+function createUnderTokenThruster(token) {
     const graphics = new PIXI.Graphics();
     graphics.blendMode = PIXI.BLEND_MODES.ADD;
     graphics.alpha = 0.85;
+    graphics.eventMode = "none";
+    graphics.interactive = false;
+    graphics.zIndex = getTokenSortValue(token) - 1;
 
-    token.addChildAt(graphics, 0);
+    const layer = canvas.primary ?? canvas.tokens;
+    layer.sortableChildren = true;
+    layer.addChildAt(graphics, 0);
     return graphics;
 }
 
@@ -443,8 +448,8 @@ function drawThrusterCone(graphics, token, rotation) {
     const length = getSettingNumber("thrusterLength", 1.25) * canvas.grid.size;
     const width = getSettingNumber("thrusterWidth", 0.55) * canvas.grid.size;
     const color = hexToNumber(game.settings.get(MODULE_ID, "thrusterColor"), 0x40c7ff);
-    const centerX = token.w / 2;
-    const centerY = token.h / 2;
+    const centerX = token.x + token.w / 2;
+    const centerY = token.y + token.h / 2;
     const radians = normalizeDegrees(rotation) * Math.PI / 180;
     const forwardX = Math.sin(radians);
     const forwardY = -Math.cos(radians);
@@ -457,6 +462,7 @@ function drawThrusterCone(graphics, token, rotation) {
     const tipY = rearY - forwardY * length;
 
     graphics.clear();
+    graphics.zIndex = getTokenSortValue(token) - 1;
 
     const segments = 8;
     for (let i = 0; i < segments; i++) {
@@ -479,6 +485,10 @@ function drawThrusterCone(graphics, token, rotation) {
         ]);
         graphics.endFill();
     }
+}
+
+function getTokenSortValue(token) {
+    return Number.isFinite(token.mesh?.zIndex) ? token.mesh.zIndex : Number.isFinite(token.zIndex) ? token.zIndex : 0;
 }
 
 function fadeAndDestroyThruster(controller) {
