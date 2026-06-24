@@ -137,12 +137,14 @@ class FullSpeedAheadCosmeticsConfig extends FormApplication {
 
     getData() {
         return {
-            renameCreatureCapacity: game.settings.get(MODULE_ID, "renameCreatureCapacity")
+            renameCreatureCapacity: game.settings.get(MODULE_ID, "renameCreatureCapacity"),
+            renameFeaturesToShipFunctions: game.settings.get(MODULE_ID, "renameFeaturesToShipFunctions")
         };
     }
 
     async _updateObject(event, formData) {
         await game.settings.set(MODULE_ID, "renameCreatureCapacity", Boolean(formData.renameCreatureCapacity));
+        await game.settings.set(MODULE_ID, "renameFeaturesToShipFunctions", Boolean(formData.renameFeaturesToShipFunctions));
     }
 }
 
@@ -275,6 +277,14 @@ Hooks.once("init", () => {
     registerSetting("renameCreatureCapacity", {
         name: "Change Creature Capacity Label",
         hint: "On Tidy5e vehicle sheets, change the Creature Capacity label to Module Capacity.",
+        type: Boolean,
+        default: false,
+        config: false
+    });
+
+    registerSetting("renameFeaturesToShipFunctions", {
+        name: "Change Features Label",
+        hint: "On Tidy5e vehicle sheets, change the Features label to Ship Functions.",
         type: Boolean,
         default: false,
         config: false
@@ -453,13 +463,21 @@ function playMovementSound(userId) {
 }
 
 function applyVehicleSheetCosmetics(app, html) {
-    if (!game.settings.get(MODULE_ID, "renameCreatureCapacity")) return;
     if (app.actor?.type !== "vehicle") return;
 
-    html.find('h4:contains("Creature Capacity")').each((index, element) => {
-        const label = $(element);
-        label.text(label.text().replace("Creature Capacity", "Module Capacity"));
-    });
+    if (game.settings.get(MODULE_ID, "renameCreatureCapacity")) {
+        html.find('h4:contains("Creature Capacity")').each((index, element) => {
+            const label = $(element);
+            label.text(label.text().replace("Creature Capacity", "Module Capacity"));
+        });
+    }
+
+    if (game.settings.get(MODULE_ID, "renameFeaturesToShipFunctions")) {
+        html.find('div.item-table-column:contains("Features")').each((index, element) => {
+            const label = $(element);
+            label.text(label.text().replace("Features", "Ship Functions"));
+        });
+    }
 }
 
 function startVehicleMotionEffects(tokenDocument, options) {
