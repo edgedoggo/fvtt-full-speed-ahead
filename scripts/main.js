@@ -3,8 +3,8 @@
 const MODULE_ID = "full-speed-ahead";
 const INTERNAL_MOVE = "fullSpeedAheadInternalMove";
 const LOG_PREFIX = "[Full Speed Ahead]";
-const sequencingTokens = new Set();
 const lastTokenPositions = new Map();
+const activeMotionEffects = new Map();
 
 Hooks.once("init", () => {
     console.log(`${LOG_PREFIX} Initializing...`);
@@ -17,18 +17,26 @@ Hooks.once("init", () => {
     });
 
     registerSetting("rotateBeforeMove", {
-        name: "Rotate Before Moving",
-        hint: "Pause vehicle movement briefly, rotate first, then move. This prevents the late-spin effect and avoids recursive movement updates.",
+        name: "Smooth Rotation During Movement",
+        hint: "Rotate vehicles by the shortest path while they start moving instead of instantly snapping to the destination heading.",
         type: Boolean,
         default: true
     });
 
     registerSetting("rotationDelayMs", {
-        name: "Rotation Delay",
-        hint: "How long, in milliseconds, to wait after rotating before the vehicle starts moving.",
+        name: "Rotation Update Interval",
+        hint: "How often, in milliseconds, to publish smooth rotation updates while a vehicle starts moving.",
         type: Number,
-        default: 300,
-        range: { min: 0, max: 2000, step: 50 }
+        default: 75,
+        range: { min: 25, max: 500, step: 25 }
+    });
+
+    registerSetting("rotationFinishSquares", {
+        name: "Rotation Finish Distance",
+        hint: "How many grid spaces the vehicle may travel before it has finished rotating to its new heading.",
+        type: Number,
+        default: 2,
+        range: { min: 0.25, max: 10, step: 0.25 }
     });
 
     registerSetting("rotationOffset", {
@@ -77,7 +85,7 @@ Hooks.once("init", () => {
 
     registerSetting("thrusterLength", {
         name: "Thruster Length",
-        hint: "Length of the thrust trail in grid spaces.",
+        hint: "Length of the attached thrust cone in grid spaces.",
         type: Number,
         default: 1.25,
         range: { min: 0.25, max: 6, step: 0.25 }
@@ -85,7 +93,7 @@ Hooks.once("init", () => {
 
     registerSetting("thrusterWidth", {
         name: "Thruster Width",
-        hint: "Width of the thrust trail in grid spaces.",
+        hint: "Width of the attached thrust cone in grid spaces.",
         type: Number,
         default: 0.55,
         range: { min: 0.1, max: 3, step: 0.05 }
@@ -114,16 +122,14 @@ Hooks.on("preUpdateToken", (tokenDocument, changes, options, userId) => {
     if (rotation === null) return;
 
     const adjustedRotation = normalizeDegrees(rotation + getSettingNumber("rotationOffset", 0));
-    const rotateBeforeMove = game.settings.get(MODULE_ID, "rotateBeforeMove");
     lastTokenPositions.set(tokenDocument.id, origin);
-
-    if (!rotateBeforeMove) {
-        changes.rotation = adjustedRotation;
-        return;
-    }
-
-    sequenceVehicleMove(tokenDocument, changes, adjustedRotation);
-    return false;
+    options.fullSpeedAheadMotion = {
+        origin,
+        destination,
+        startRotation: normalizeDegrees(tokenDocument.rotation ?? 0),
+        targetRotation: adjustedRotation
+    };
+    delete changes.rotation;
 });
 
 Hooks.on("updateToken", (tokenDocument, changes, options, userId) => {
@@ -132,7 +138,7 @@ Hooks.on("updateToken", (tokenDocument, changes, options, userId) => {
     if (!isVehicleDocument(tokenDocument)) return;
 
     playMovementSound();
-    drawThrusterEffect(tokenDocument, changes, options);
+    startVehicleMotionEffects(tokenDocument, options);
 });
 
 function registerSetting(key, data) {
@@ -191,37 +197,6 @@ function addTargetingSystemButton() {
     });
 }
 
-async function sequenceVehicleMove(tokenDocument, changes, rotation) {
-    const tokenId = tokenDocument.id;
-    if (sequencingTokens.has(tokenId)) return;
-
-    sequencingTokens.add(tokenId);
-    const movementChanges = foundry.utils.deepClone(changes);
-    movementChanges.rotation = rotation;
-
-    try {
-        await tokenDocument.update(
-            { rotation },
-            { animate: false, [INTERNAL_MOVE]: true, fullSpeedAheadRotationOnly: true }
-        );
-
-        const delay = Math.max(0, getSettingNumber("rotationDelayMs", 300));
-        if (delay > 0) await wait(delay);
-
-        await tokenDocument.update(movementChanges, {
-            animate: true,
-            [INTERNAL_MOVE]: true,
-            fullSpeedAheadSequencedMove: true,
-            fullSpeedAheadOrigin: { x: tokenDocument.x, y: tokenDocument.y }
-        });
-    } catch (error) {
-        console.error(`${LOG_PREFIX} Could not sequence vehicle movement.`, error);
-        ui.notifications.error("Full Speed Ahead could not complete vehicle movement. See console for details.");
-    } finally {
-        sequencingTokens.delete(tokenId);
-    }
-}
-
 function isVehicleDocument(tokenDocument) {
     return tokenDocument?.actor?.type === "vehicle";
 }
@@ -248,10 +223,6 @@ function getSettingNumber(key, fallback) {
     return Number.isFinite(value) ? value : fallback;
 }
 
-function wait(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
-}
-
 function playMovementSound() {
     if (!game.settings.get(MODULE_ID, "enableMovementSound")) return;
 
@@ -266,72 +237,189 @@ function playMovementSound() {
     }, true);
 }
 
-function drawThrusterEffect(tokenDocument, changes, options) {
-    if (!game.settings.get(MODULE_ID, "enableThrusterEffect")) return;
+function startVehicleMotionEffects(tokenDocument, options) {
     if (!canvas?.ready || !canvas.tokens) return;
 
     const token = canvas.tokens.get(tokenDocument.id);
     if (!token) return;
 
     const current = { x: tokenDocument.x, y: tokenDocument.y };
-    const previous = options?.fullSpeedAheadOrigin ?? lastTokenPositions.get(tokenDocument.id);
+    const motion = options?.fullSpeedAheadMotion ?? getFallbackMotion(tokenDocument, current);
     lastTokenPositions.delete(tokenDocument.id);
+    if (!motion) return;
 
-    let nx;
-    let ny;
-    if (previous) {
-        const dx = current.x - previous.x;
-        const dy = current.y - previous.y;
-        if (dx === 0 && dy === 0) return;
-        const distance = Math.hypot(dx, dy);
-        nx = dx / distance;
-        ny = dy / distance;
-    } else {
-        const radians = normalizeDegrees(tokenDocument.rotation) * Math.PI / 180;
-        nx = Math.sin(radians);
-        ny = -Math.cos(radians);
-    }
+    stopVehicleMotionEffects(tokenDocument.id);
 
-    const centerX = tokenDocument.x + tokenDocument.width * canvas.grid.size / 2;
-    const centerY = tokenDocument.y + tokenDocument.height * canvas.grid.size / 2;
-    const rearX = centerX - nx * token.w * 0.45;
-    const rearY = centerY - ny * token.h * 0.45;
-    const length = getSettingNumber("thrusterLength", 1.25) * canvas.grid.size;
-    const width = getSettingNumber("thrusterWidth", 0.55) * canvas.grid.size;
-    const color = hexToNumber(game.settings.get(MODULE_ID, "thrusterColor"), 0x40c7ff);
+    const controller = {
+        destroyed: false,
+        thruster: game.settings.get(MODULE_ID, "enableThrusterEffect") ? createAttachedThruster(token) : null,
+        lastRotationUpdate: 0,
+        currentRotation: motion.startRotation
+    };
+    activeMotionEffects.set(tokenDocument.id, controller);
 
+    const startTime = performance.now();
+    const maxDuration = 5000;
+    const tick = () => {
+        if (controller.destroyed) return;
+
+        const progress = getMotionProgress(token, motion);
+        if (game.settings.get(MODULE_ID, "rotateBeforeMove")) {
+            updateSmoothRotation(tokenDocument, motion, progress, controller);
+        } else {
+            controller.currentRotation = motion.targetRotation;
+        }
+        drawThrusterCone(controller.thruster, token, controller.currentRotation);
+
+        if (progress >= 0.995 || performance.now() - startTime > maxDuration) {
+            finishVehicleMotionEffects(tokenDocument, motion, controller, tick);
+        }
+    };
+
+    controller.tick = tick;
+    canvas.app.ticker.add(tick);
+}
+
+function getFallbackMotion(tokenDocument, destination) {
+    const origin = lastTokenPositions.get(tokenDocument.id);
+    if (!origin) return null;
+
+    const targetRotation = getHeadingRotation(origin, destination);
+    if (targetRotation === null) return null;
+
+    return {
+        origin,
+        destination,
+        startRotation: normalizeDegrees(tokenDocument.rotation ?? 0),
+        targetRotation: normalizeDegrees(targetRotation + getSettingNumber("rotationOffset", 0))
+    };
+}
+
+function getMotionProgress(token, motion) {
+    const totalDistance = Math.hypot(
+        motion.destination.x - motion.origin.x,
+        motion.destination.y - motion.origin.y
+    );
+    if (totalDistance === 0) return 1;
+
+    const currentX = Number.isFinite(token.x) ? token.x : motion.destination.x;
+    const currentY = Number.isFinite(token.y) ? token.y : motion.destination.y;
+    const traveled = Math.hypot(currentX - motion.origin.x, currentY - motion.origin.y);
+    return Math.max(0, Math.min(1, traveled / totalDistance));
+}
+
+function updateSmoothRotation(tokenDocument, motion, moveProgress, controller) {
+    const totalDistance = Math.hypot(
+        motion.destination.x - motion.origin.x,
+        motion.destination.y - motion.origin.y
+    );
+    const finishDistance = Math.max(canvas.grid.size * 0.1, getSettingNumber("rotationFinishSquares", 2) * canvas.grid.size);
+    const rotationProgress = totalDistance <= finishDistance ? moveProgress : Math.min(1, moveProgress * totalDistance / finishDistance);
+    const easedProgress = easeOutCubic(rotationProgress);
+    const target = interpolateRotation(motion.startRotation, motion.targetRotation, easedProgress);
+    const now = performance.now();
+    const interval = Math.max(25, getSettingNumber("rotationDelayMs", 75));
+    controller.currentRotation = target;
+
+    if (rotationProgress < 1 && now - controller.lastRotationUpdate < interval) return;
+    controller.lastRotationUpdate = now;
+
+    const rounded = Math.round(target);
+    if (normalizeDegrees(tokenDocument.rotation ?? 0) === normalizeDegrees(rounded)) return;
+
+    tokenDocument.update(
+        { rotation: rounded },
+        { animate: false, [INTERNAL_MOVE]: true, fullSpeedAheadRotationOnly: true }
+    ).catch(error => console.warn(`${LOG_PREFIX} Could not update smooth vehicle rotation.`, error));
+}
+
+function finishVehicleMotionEffects(tokenDocument, motion, controller, tick) {
+    canvas.app.ticker.remove(tick);
+    tokenDocument.update(
+        { rotation: motion.targetRotation },
+        { animate: false, [INTERNAL_MOVE]: true, fullSpeedAheadRotationOnly: true }
+    ).catch(error => console.warn(`${LOG_PREFIX} Could not finish vehicle rotation.`, error));
+
+    fadeAndDestroyThruster(controller);
+    activeMotionEffects.delete(tokenDocument.id);
+}
+
+function stopVehicleMotionEffects(tokenId) {
+    const controller = activeMotionEffects.get(tokenId);
+    if (!controller) return;
+
+    controller.destroyed = true;
+    if (controller.tick) canvas.app.ticker.remove(controller.tick);
+    fadeAndDestroyThruster(controller);
+    activeMotionEffects.delete(tokenId);
+}
+
+function createAttachedThruster(token) {
     const graphics = new PIXI.Graphics();
     graphics.blendMode = PIXI.BLEND_MODES.ADD;
     graphics.alpha = 0.85;
 
-    const px = -ny;
-    const py = nx;
-    graphics.beginFill(color, 0.35);
+    token.addChild(graphics);
+    return graphics;
+}
+
+function drawThrusterCone(graphics, token, rotation) {
+    if (!graphics || graphics.destroyed) return;
+
+    const length = getSettingNumber("thrusterLength", 1.25) * canvas.grid.size;
+    const width = getSettingNumber("thrusterWidth", 0.55) * canvas.grid.size;
+    const color = hexToNumber(game.settings.get(MODULE_ID, "thrusterColor"), 0x40c7ff);
+    const centerX = token.w / 2;
+    const centerY = token.h / 2;
+    const radians = normalizeDegrees(rotation) * Math.PI / 180;
+    const forwardX = Math.sin(radians);
+    const forwardY = -Math.cos(radians);
+    const sideX = -forwardY;
+    const sideY = forwardX;
+    const rearDistance = Math.min(token.w, token.h) * 0.48;
+    const rearX = centerX - forwardX * rearDistance;
+    const rearY = centerY - forwardY * rearDistance;
+    const tipX = rearX - forwardX * length;
+    const tipY = rearY - forwardY * length;
+
+    graphics.clear();
+    graphics.beginFill(color, 0.75);
     graphics.drawPolygon([
-        rearX + px * width / 2, rearY + py * width / 2,
-        rearX - px * width / 2, rearY - py * width / 2,
-        rearX - nx * length, rearY - ny * length
+        rearX + sideX * width / 2, rearY + sideY * width / 2,
+        rearX - sideX * width / 2, rearY - sideY * width / 2,
+        tipX, tipY
     ]);
     graphics.endFill();
+}
 
-    graphics.lineStyle(Math.max(2, width * 0.18), color, 0.8);
-    graphics.moveTo(rearX, rearY);
-    graphics.lineTo(rearX - nx * length * 0.85, rearY - ny * length * 0.85);
-
-    const layer = canvas.interface ?? canvas.stage;
-    layer.addChild(graphics);
+function fadeAndDestroyThruster(controller) {
+    const graphics = controller.thruster;
+    if (!graphics || graphics.destroyed) return;
 
     const startedAt = performance.now();
-    const duration = 450;
+    const startAlpha = graphics.alpha;
+    const duration = 250;
     const fade = () => {
         const progress = Math.min(1, (performance.now() - startedAt) / duration);
-        graphics.alpha = 0.85 * (1 - progress);
-        if (progress >= 1) {
-            canvas.app.ticker.remove(fade);
-            graphics.destroy({ children: true });
-        }
+        graphics.alpha = startAlpha * (1 - progress);
+        if (progress < 1) return;
+
+        canvas.app.ticker.remove(fade);
+        graphics.destroy({ children: true });
     };
     canvas.app.ticker.add(fade);
+}
+
+function interpolateRotation(start, end, progress) {
+    return normalizeDegrees(start + shortestRotationDelta(start, end) * progress);
+}
+
+function shortestRotationDelta(start, end) {
+    return ((((end - start) % 360) + 540) % 360) - 180;
+}
+
+function easeOutCubic(progress) {
+    return 1 - Math.pow(1 - Math.max(0, Math.min(1, progress)), 3);
 }
 
 function hexToNumber(value, fallback) {

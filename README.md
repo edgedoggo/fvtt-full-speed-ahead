@@ -7,10 +7,10 @@ Full Speed Ahead rotates vehicle tokens toward their movement destination, can s
 ## Features
 
 - Automatically rotates actor tokens with type `vehicle`.
-- Optional rotate-first movement sequencing to avoid late spins and recursive token-update lockups.
-- Configurable rotation delay and rotation offset for different ship art orientations.
+- Smooth shortest-path rotation during the first few grid spaces of movement.
+- Configurable rotation update interval, finish distance, and rotation offset for different ship art orientations.
 - Movement sound effect with configurable path and volume.
-- PIXI thruster trail with configurable color, length, and width.
+- Token-attached PIXI thruster cone with configurable color, length, and width.
 - Token-control targeting button for GMs and players.
 
 ## Install
