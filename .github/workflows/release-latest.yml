@@ -1,0 +1,37 @@
+name: Release latest
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Read module version
+        id: module
+        run: |
+          echo "version=$(node -p "require('./module.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Build module zip
+        run: |
+          zip -r full-speed-ahead.zip module.json README.md scripts sounds -x "*.DS_Store" -x "__MACOSX/*"
+
+      - name: Replace latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --cleanup-tag --yes || true
+          gh release create latest module.json full-speed-ahead.zip \
+            --target "$GITHUB_SHA" \
+            --title "Full Speed Ahead v${{ steps.module.outputs.version }}" \
+            --notes "Latest Full Speed Ahead module release."

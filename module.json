@@ -1,29 +1,37 @@
 {
     "id": "full-speed-ahead",
+    "name": "full-speed-ahead",
     "title": "Full Speed Ahead",
-	"socket": true,
-    "description": "Rotates 'vehicle' icons so that the starboard side is facing forward, giving the illusion the vehicle is moving",
+    "description": "Vehicle movement helpers for Foundry VTT: rotate vehicle tokens before they move, add movement sound effects, draw configurable thruster trails, and provide a ship targeting button for space combat.",
     "authors": [
         {
             "name": "knoself",
             "discord": "knoself"
         }
     ],
-    "esmodules": [
-        "scripts/rotateIcon.js"
-    ],
-    "version": "0.1",
+    "version": "1.0.0",
     "compatibility": {
-        "minimum": 10,
+        "minimum": "10",
         "verified": "11.312"
     },
-    "manifest": "https://github.com/edgedoggo/fvtt-full-speed-ahead/releases/download/latest/module.json",
-    "download": "https://github.com/edgedoggo/fvtt-full-speed-ahead/releases/download/latest/full-speed-ahead.zip",
     "minimumCoreVersion": "10.0",
     "compatibleCoreVersion": "11.312",
+    "manifest": "https://github.com/edgedoggo/fvtt-full-speed-ahead/releases/latest/download/module.json",
+    "download": "https://github.com/edgedoggo/fvtt-full-speed-ahead/releases/latest/download/full-speed-ahead.zip",
     "socket": true,
-    "scripts": ["scripts/rotateIcon.js"],
+    "esmodules": [
+    "scripts/main.js",
+    "scripts/targetingsystem.js"
+  ],
+
     "languages": [],
     "packs": [],
-    "dependencies": []
+    "dependencies": [],
+    "assets": [
+        {
+            "type": "audio",
+            "name": "Lock-On Sound",
+            "path": "sounds/lockon.ogg"
+        }  
+    ]
 }
