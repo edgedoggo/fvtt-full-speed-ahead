@@ -32,12 +32,30 @@
     </div>
 
     <div class="form-group">
-        <label>Thruster Color</label>
+        <label>Default Thruster Color</label>
         <div class="form-fields">
-            <input type="color" name="thrusterColor" value="{{thrusterColor}}">
-            <input type="text" data-thruster-color-text value="{{thrusterColor}}">
+            <input type="color" name="thrusterColor" value="{{thrusterColor}}" data-color-picker="thrusterColor">
+            <input type="text" data-color-text="thrusterColor" value="{{thrusterColor}}">
         </div>
     </div>
+
+    {{#if isTokenConfig}}
+    <hr>
+
+    <div class="form-group">
+        <label>{{tokenName}} Exhaust Color</label>
+        <input type="checkbox" name="useTokenThrusterColor" {{checked useTokenThrusterColor}}>
+        <p class="notes">Use a custom exhaust color for this vehicle token.</p>
+    </div>
+
+    <div class="form-group" data-token-color-fields style="{{#unless useTokenThrusterColor}}display: none;{{/unless}}">
+        <label>Ship Thruster Color</label>
+        <div class="form-fields">
+            <input type="color" name="tokenThrusterColor" value="{{tokenThrusterColor}}" data-color-picker="tokenThrusterColor">
+            <input type="text" data-color-text="tokenThrusterColor" value="{{tokenThrusterColor}}">
+        </div>
+    </div>
+    {{/if}}
 
     <div class="form-group">
         <label>Thruster Length</label>

@@ -3,6 +3,7 @@
 const MODULE_ID = "full-speed-ahead";
 const INTERNAL_MOVE = "fullSpeedAheadInternalMove";
 const LOG_PREFIX = "[Full Speed Ahead]";
+const THRUSTER_COLOR_FLAG = "thrusterColor";
 const lastTokenPositions = new Map();
 const activeMotionEffects = new Map();
 
@@ -17,7 +18,13 @@ class FullSpeedAheadEffectsConfig extends FormApplication {
         });
     }
 
+    get tokenDocument() {
+        return this.object?.documentName === "Token" ? this.object : null;
+    }
+
     getData() {
+        const tokenDocument = this.tokenDocument;
+
         return {
             enableMovementSound: game.settings.get(MODULE_ID, "enableMovementSound"),
             movementSoundPath: game.settings.get(MODULE_ID, "movementSoundPath"),
@@ -25,7 +32,11 @@ class FullSpeedAheadEffectsConfig extends FormApplication {
             enableThrusterEffect: game.settings.get(MODULE_ID, "enableThrusterEffect"),
             thrusterColor: game.settings.get(MODULE_ID, "thrusterColor"),
             thrusterLength: game.settings.get(MODULE_ID, "thrusterLength"),
-            thrusterWidth: game.settings.get(MODULE_ID, "thrusterWidth")
+            thrusterWidth: game.settings.get(MODULE_ID, "thrusterWidth"),
+            tokenName: tokenDocument?.name,
+            isTokenConfig: Boolean(tokenDocument),
+            useTokenThrusterColor: Boolean(tokenDocument?.getFlag(MODULE_ID, THRUSTER_COLOR_FLAG)),
+            tokenThrusterColor: tokenDocument?.getFlag(MODULE_ID, THRUSTER_COLOR_FLAG) ?? game.settings.get(MODULE_ID, "thrusterColor")
         };
     }
 
@@ -42,13 +53,21 @@ class FullSpeedAheadEffectsConfig extends FormApplication {
             }).render(true);
         });
 
-        html.find('[name="thrusterColor"]').on("input", event => {
-            html.find('[data-thruster-color-text]').val(event.currentTarget.value);
+        html.find('[data-color-picker]').on("input", event => {
+            const target = event.currentTarget.dataset.colorPicker;
+            html.find(`[data-color-text="${target}"]`).val(event.currentTarget.value);
         });
 
-        html.find('[data-thruster-color-text]').on("change", event => {
+        html.find('[data-color-text]').on("change", event => {
             const value = event.currentTarget.value.trim();
-            if (/^#[0-9a-f]{6}$/i.test(value)) html.find('[name="thrusterColor"]').val(value);
+            if (!/^#[0-9a-f]{6}$/i.test(value)) return;
+
+            const target = event.currentTarget.dataset.colorText;
+            html.find(`[data-color-picker="${target}"]`).val(value);
+        });
+
+        html.find('[name="useTokenThrusterColor"]').on("change", event => {
+            html.find('[data-token-color-fields]').toggle(event.currentTarget.checked);
         });
     }
 
@@ -65,6 +84,16 @@ class FullSpeedAheadEffectsConfig extends FormApplication {
 
         for (const [key, value] of Object.entries(updates)) {
             await game.settings.set(MODULE_ID, key, value);
+        }
+
+        const tokenDocument = this.tokenDocument;
+        if (!tokenDocument) return;
+
+        if (formData.useTokenThrusterColor) {
+            const tokenColor = String(formData.tokenThrusterColor ?? updates.thrusterColor).trim();
+            await tokenDocument.setFlag(MODULE_ID, THRUSTER_COLOR_FLAG, /^#[0-9a-f]{6}$/i.test(tokenColor) ? tokenColor : updates.thrusterColor);
+        } else {
+            await tokenDocument.unsetFlag(MODULE_ID, THRUSTER_COLOR_FLAG);
         }
     }
 }
@@ -241,7 +270,7 @@ Hooks.on("renderTokenHUD", (app, html, data) => {
     button.on("click", event => {
         event.preventDefault();
         event.stopPropagation();
-        new FullSpeedAheadEffectsConfig().render(true);
+        new FullSpeedAheadEffectsConfig(token.document).render(true);
     });
 
     const leftColumn = html.find(".col.left");
@@ -481,7 +510,7 @@ function drawThrusterCone(graphics, token, rotation) {
 
     const length = getSettingNumber("thrusterLength", 1.25) * canvas.grid.size;
     const width = getSettingNumber("thrusterWidth", 0.55) * canvas.grid.size;
-    const color = hexToNumber(game.settings.get(MODULE_ID, "thrusterColor"), 0x40c7ff);
+    const color = hexToNumber(getThrusterColor(token), 0x40c7ff);
     const centerX = token.x + token.w / 2;
     const centerY = token.y + token.h / 2;
     const radians = normalizeDegrees(rotation) * Math.PI / 180;
@@ -523,6 +552,10 @@ function drawThrusterCone(graphics, token, rotation) {
 
 function getTokenSortValue(token) {
     return Number.isFinite(token.mesh?.zIndex) ? token.mesh.zIndex : Number.isFinite(token.zIndex) ? token.zIndex : 0;
+}
+
+function getThrusterColor(token) {
+    return token.document?.getFlag(MODULE_ID, THRUSTER_COLOR_FLAG) ?? game.settings.get(MODULE_ID, "thrusterColor");
 }
 
 function fadeAndDestroyThruster(controller) {
