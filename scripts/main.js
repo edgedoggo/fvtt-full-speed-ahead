@@ -124,6 +124,28 @@ class FullSpeedAheadEffectsConfig extends FormApplication {
     }
 }
 
+class FullSpeedAheadCosmeticsConfig extends FormApplication {
+    static get defaultOptions() {
+        return foundry.utils.mergeObject(super.defaultOptions, {
+            id: "full-speed-ahead-cosmetics-config",
+            title: "Full Speed Ahead: Vehicle Sheet Cosmetics",
+            template: `modules/${MODULE_ID}/templates/cosmetics-settings.hbs`,
+            width: 520,
+            closeOnSubmit: true
+        });
+    }
+
+    getData() {
+        return {
+            renameCreatureCapacity: game.settings.get(MODULE_ID, "renameCreatureCapacity")
+        };
+    }
+
+    async _updateObject(event, formData) {
+        await game.settings.set(MODULE_ID, "renameCreatureCapacity", Boolean(formData.renameCreatureCapacity));
+    }
+}
+
 Hooks.once("init", () => {
     console.log(`${LOG_PREFIX} Initializing...`);
 
@@ -133,6 +155,15 @@ Hooks.once("init", () => {
         hint: "Configure movement sound, sound browsing, thruster color, and thruster shape.",
         icon: "fas fa-fire",
         type: FullSpeedAheadEffectsConfig,
+        restricted: true
+    });
+
+    game.settings.registerMenu(MODULE_ID, "cosmeticsConfig", {
+        name: "Vehicle Sheet Cosmetics",
+        label: "Configure Cosmetics",
+        hint: "Configure optional vehicle sheet label changes.",
+        icon: "fas fa-paint-brush",
+        type: FullSpeedAheadCosmeticsConfig,
         restricted: true
     });
 
@@ -241,6 +272,14 @@ Hooks.once("init", () => {
         config: false
     });
 
+    registerSetting("renameCreatureCapacity", {
+        name: "Change Creature Capacity Label",
+        hint: "On Tidy5e vehicle sheets, change the Creature Capacity label to Module Capacity.",
+        type: Boolean,
+        default: false,
+        config: false
+    });
+
     registerTargetingSettings();
 });
 
@@ -279,8 +318,12 @@ Hooks.on("updateToken", (tokenDocument, changes, options, userId) => {
     if (!hasMovement(changes)) return;
     if (!isVehicleDocument(tokenDocument)) return;
 
-    playMovementSound();
+    playMovementSound(userId);
     startVehicleMotionEffects(tokenDocument, options);
+});
+
+Hooks.on("renderTidy5eVehicleSheet", (app, html, data) => {
+    applyVehicleSheetCosmetics(app, html);
 });
 
 Hooks.on("renderTokenHUD", (app, html, data) => {
@@ -394,8 +437,9 @@ function getSettingNumber(key, fallback) {
     return Number.isFinite(value) ? value : fallback;
 }
 
-function playMovementSound() {
+function playMovementSound(userId) {
     if (!game.settings.get(MODULE_ID, "enableMovementSound")) return;
+    if (userId && game.user.id !== userId) return;
 
     const src = game.settings.get(MODULE_ID, "movementSoundPath")?.trim();
     if (!src) return;
@@ -406,6 +450,16 @@ function playMovementSound() {
         autoplay: true,
         loop: false
     }, true);
+}
+
+function applyVehicleSheetCosmetics(app, html) {
+    if (!game.settings.get(MODULE_ID, "renameCreatureCapacity")) return;
+    if (app.actor?.type !== "vehicle") return;
+
+    html.find('h4:contains("Creature Capacity")').each((index, element) => {
+        const label = $(element);
+        label.text(label.text().replace("Creature Capacity", "Module Capacity"));
+    });
 }
 
 function startVehicleMotionEffects(tokenDocument, options) {

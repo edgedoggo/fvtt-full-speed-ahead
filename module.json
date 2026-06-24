@@ -9,7 +9,7 @@
             "discord": "knoself"
         }
     ],
-    "version": "1.0.6",
+    "version": "1.0.7",
     "compatibility": {
         "minimum": "10",
         "verified": "11.312"

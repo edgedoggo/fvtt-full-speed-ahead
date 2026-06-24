@@ -14,6 +14,8 @@ Full Speed Ahead rotates vehicle tokens toward their movement destination, can s
 - Movement effects settings menu with an audio browse button and thruster color picker.
 - Blue vehicle Token HUD gear for opening the Movement Effects menu from the right-click overlay.
 - Name-keyed ship profiles for exhaust color overrides shared by every vehicle with the same name.
+- Vehicle Sheet Cosmetics panel with an optional Creature Capacity to Module Capacity label change.
+- Movement sounds are broadcast once by the movement initiator to avoid doubled playback.
 - Token-control targeting button for GMs and players.
 
 ## Install
