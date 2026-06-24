@@ -6,8 +6,80 @@ const LOG_PREFIX = "[Full Speed Ahead]";
 const lastTokenPositions = new Map();
 const activeMotionEffects = new Map();
 
+class FullSpeedAheadEffectsConfig extends FormApplication {
+    static get defaultOptions() {
+        return foundry.utils.mergeObject(super.defaultOptions, {
+            id: "full-speed-ahead-effects-config",
+            title: "Full Speed Ahead: Movement Effects",
+            template: `modules/${MODULE_ID}/templates/effects-settings.hbs`,
+            width: 520,
+            closeOnSubmit: true
+        });
+    }
+
+    getData() {
+        return {
+            enableMovementSound: game.settings.get(MODULE_ID, "enableMovementSound"),
+            movementSoundPath: game.settings.get(MODULE_ID, "movementSoundPath"),
+            movementSoundVolume: game.settings.get(MODULE_ID, "movementSoundVolume"),
+            enableThrusterEffect: game.settings.get(MODULE_ID, "enableThrusterEffect"),
+            thrusterColor: game.settings.get(MODULE_ID, "thrusterColor"),
+            thrusterLength: game.settings.get(MODULE_ID, "thrusterLength"),
+            thrusterWidth: game.settings.get(MODULE_ID, "thrusterWidth")
+        };
+    }
+
+    activateListeners(html) {
+        super.activateListeners(html);
+
+        html.find('[data-action="browse-sound"]').on("click", event => {
+            event.preventDefault();
+            const input = html.find('[name="movementSoundPath"]');
+            new FilePicker({
+                type: "audio",
+                current: input.val() || "",
+                callback: path => input.val(path)
+            }).render(true);
+        });
+
+        html.find('[name="thrusterColor"]').on("input", event => {
+            html.find('[data-thruster-color-text]').val(event.currentTarget.value);
+        });
+
+        html.find('[data-thruster-color-text]').on("change", event => {
+            const value = event.currentTarget.value.trim();
+            if (/^#[0-9a-f]{6}$/i.test(value)) html.find('[name="thrusterColor"]').val(value);
+        });
+    }
+
+    async _updateObject(event, formData) {
+        const updates = {
+            enableMovementSound: Boolean(formData.enableMovementSound),
+            movementSoundPath: String(formData.movementSoundPath ?? "").trim(),
+            movementSoundVolume: Number(formData.movementSoundVolume),
+            enableThrusterEffect: Boolean(formData.enableThrusterEffect),
+            thrusterColor: String(formData.thrusterColor ?? "#40c7ff").trim(),
+            thrusterLength: Number(formData.thrusterLength),
+            thrusterWidth: Number(formData.thrusterWidth)
+        };
+
+        for (const [key, value] of Object.entries(updates)) {
+            await game.settings.set(MODULE_ID, key, value);
+        }
+    }
+}
+
 Hooks.once("init", () => {
     console.log(`${LOG_PREFIX} Initializing...`);
+
+    game.settings.registerMenu(MODULE_ID, "effectsConfig", {
+        name: "Movement Effects",
+        label: "Configure Effects",
+        hint: "Configure movement sound, sound browsing, thruster color, and thruster shape.",
+        icon: "fas fa-fire",
+        type: FullSpeedAheadEffectsConfig,
+        restricted: true
+    });
 
     registerSetting("enableShipRotation", {
         name: "Enable Vehicle Rotation",
@@ -58,7 +130,8 @@ Hooks.once("init", () => {
         name: "Movement Sound Path",
         hint: "Path to a movement sound. Defaults to the bundled lock-on sound until you add a dedicated thruster audio file.",
         type: String,
-        default: "modules/full-speed-ahead/sounds/lockon.ogg"
+        default: "modules/full-speed-ahead/sounds/lockon.ogg",
+        config: false
     });
 
     registerSetting("movementSoundVolume", {
@@ -80,7 +153,8 @@ Hooks.once("init", () => {
         name: "Thruster Color",
         hint: "Hex color used for the movement thrust trail.",
         type: String,
-        default: "#40c7ff"
+        default: "#40c7ff",
+        config: false
     });
 
     registerSetting("thrusterLength", {
@@ -359,7 +433,7 @@ function createAttachedThruster(token) {
     graphics.blendMode = PIXI.BLEND_MODES.ADD;
     graphics.alpha = 0.85;
 
-    token.addChild(graphics);
+    token.addChildAt(graphics, 0);
     return graphics;
 }
 
@@ -383,13 +457,28 @@ function drawThrusterCone(graphics, token, rotation) {
     const tipY = rearY - forwardY * length;
 
     graphics.clear();
-    graphics.beginFill(color, 0.75);
-    graphics.drawPolygon([
-        rearX + sideX * width / 2, rearY + sideY * width / 2,
-        rearX - sideX * width / 2, rearY - sideY * width / 2,
-        tipX, tipY
-    ]);
-    graphics.endFill();
+
+    const segments = 8;
+    for (let i = 0; i < segments; i++) {
+        const start = i / segments;
+        const end = (i + 1) / segments;
+        const startWidth = width * (1 - start);
+        const endWidth = width * (1 - end);
+        const alpha = 0.65 * Math.pow(1 - start, 1.8);
+        const startX = rearX + (tipX - rearX) * start;
+        const startY = rearY + (tipY - rearY) * start;
+        const endX = rearX + (tipX - rearX) * end;
+        const endY = rearY + (tipY - rearY) * end;
+
+        graphics.beginFill(color, alpha);
+        graphics.drawPolygon([
+            startX + sideX * startWidth / 2, startY + sideY * startWidth / 2,
+            startX - sideX * startWidth / 2, startY - sideY * startWidth / 2,
+            endX - sideX * endWidth / 2, endY - sideY * endWidth / 2,
+            endX + sideX * endWidth / 2, endY + sideY * endWidth / 2
+        ]);
+        graphics.endFill();
+    }
 }
 
 function fadeAndDestroyThruster(controller) {

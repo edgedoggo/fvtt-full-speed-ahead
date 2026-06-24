@@ -24,7 +24,7 @@ jobs:
 
       - name: Build module zip
         run: |
-          zip -r full-speed-ahead.zip module.json README.md scripts sounds -x "*.DS_Store" -x "__MACOSX/*"
+          zip -r full-speed-ahead.zip module.json README.md scripts templates sounds -x "*.DS_Store" -x "__MACOSX/*"
 
       - name: Replace latest release
         env:
