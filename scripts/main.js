@@ -123,7 +123,8 @@ Hooks.once("init", () => {
         name: "Enable Movement Sound",
         hint: "Play a sound effect whenever a vehicle token moves.",
         type: Boolean,
-        default: true
+        default: true,
+        config: false
     });
 
     registerSetting("movementSoundPath", {
@@ -139,14 +140,16 @@ Hooks.once("init", () => {
         hint: "Volume for the vehicle movement sound.",
         type: Number,
         default: 0.18,
-        range: { min: 0, max: 1, step: 0.05 }
+        range: { min: 0, max: 1, step: 0.05 },
+        config: false
     });
 
     registerSetting("enableThrusterEffect", {
         name: "Enable Thruster Effect",
         hint: "Draw a short colored thrust trail behind vehicle tokens while they move.",
         type: Boolean,
-        default: true
+        default: true,
+        config: false
     });
 
     registerSetting("thrusterColor", {
@@ -162,7 +165,8 @@ Hooks.once("init", () => {
         hint: "Length of the attached thrust cone in grid spaces.",
         type: Number,
         default: 1.25,
-        range: { min: 0.25, max: 6, step: 0.25 }
+        range: { min: 0.25, max: 6, step: 0.25 },
+        config: false
     });
 
     registerSetting("thrusterWidth", {
@@ -170,7 +174,8 @@ Hooks.once("init", () => {
         hint: "Width of the attached thrust cone in grid spaces.",
         type: Number,
         default: 0.55,
-        range: { min: 0.1, max: 3, step: 0.05 }
+        range: { min: 0.1, max: 3, step: 0.05 },
+        config: false
     });
 
     registerTargetingSettings();
@@ -213,6 +218,35 @@ Hooks.on("updateToken", (tokenDocument, changes, options, userId) => {
 
     playMovementSound();
     startVehicleMotionEffects(tokenDocument, options);
+});
+
+Hooks.on("renderTokenHUD", (app, html, data) => {
+    if (!game.user.isGM) return;
+
+    const token = app.object ?? canvas.tokens.get(data?._id);
+    if (token?.actor?.type !== "vehicle") return;
+    if (html.find(".full-speed-ahead-effects").length) return;
+
+    const button = $(`
+        <div class="control-icon full-speed-ahead-effects" title="Full Speed Ahead Effects">
+            <i class="fas fa-cog"></i>
+        </div>
+    `);
+    button.css({
+        background: "rgba(30, 105, 220, 0.82)",
+        border: "1px solid rgba(125, 190, 255, 0.95)",
+        color: "#ffffff",
+        boxShadow: "0 0 10px rgba(80, 170, 255, 0.65)"
+    });
+    button.on("click", event => {
+        event.preventDefault();
+        event.stopPropagation();
+        new FullSpeedAheadEffectsConfig().render(true);
+    });
+
+    const leftColumn = html.find(".col.left");
+    if (leftColumn.length) leftColumn.append(button);
+    else html.append(button);
 });
 
 function registerSetting(key, data) {

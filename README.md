@@ -12,6 +12,7 @@ Full Speed Ahead rotates vehicle tokens toward their movement destination, can s
 - Movement sound effect with configurable path and volume.
 - Under-token PIXI thruster cone rendered in the scene below the ship art with configurable color, length, and width.
 - Movement effects settings menu with an audio browse button and thruster color picker.
+- Blue vehicle Token HUD gear for opening the Movement Effects menu from the right-click overlay.
 - Token-control targeting button for GMs and players.
 
 ## Install
