@@ -39,20 +39,32 @@
         </div>
     </div>
 
-    {{#if isTokenConfig}}
+    {{#if hasShipProfiles}}
     <hr>
 
     <div class="form-group">
-        <label>{{tokenName}} Exhaust Color</label>
-        <input type="checkbox" name="useTokenThrusterColor" {{checked useTokenThrusterColor}}>
-        <p class="notes">Use a custom exhaust color for this vehicle token.</p>
+        <label>Ship Profile</label>
+        <div class="form-fields">
+            <select name="shipProfileName">
+                {{#each shipOptions}}
+                <option value="{{name}}" {{#if selected}}selected{{/if}}>{{name}}</option>
+                {{/each}}
+            </select>
+        </div>
+        <p class="notes">Profiles are matched by ship name. Every vehicle with the same name uses the same profile.</p>
     </div>
 
-    <div class="form-group" data-token-color-fields style="{{#unless useTokenThrusterColor}}display: none;{{/unless}}">
-        <label>Ship Thruster Color</label>
+    <div class="form-group">
+        <label>Custom Ship Exhaust</label>
+        <input type="checkbox" name="useShipThrusterColor" {{checked useShipThrusterColor}}>
+        <p class="notes">Use a custom exhaust color for this ship name.</p>
+    </div>
+
+    <div class="form-group" data-ship-color-fields style="{{#unless useShipThrusterColor}}display: none;{{/unless}}">
+        <label>Ship Exhaust Color</label>
         <div class="form-fields">
-            <input type="color" name="tokenThrusterColor" value="{{tokenThrusterColor}}" data-color-picker="tokenThrusterColor">
-            <input type="text" data-color-text="tokenThrusterColor" value="{{tokenThrusterColor}}">
+            <input type="color" name="shipThrusterColor" value="{{shipThrusterColor}}" data-color-picker="shipThrusterColor">
+            <input type="text" data-color-text="shipThrusterColor" value="{{shipThrusterColor}}">
         </div>
     </div>
     {{/if}}

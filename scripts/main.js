@@ -4,6 +4,7 @@ const MODULE_ID = "full-speed-ahead";
 const INTERNAL_MOVE = "fullSpeedAheadInternalMove";
 const LOG_PREFIX = "[Full Speed Ahead]";
 const THRUSTER_COLOR_FLAG = "thrusterColor";
+const SHIP_PROFILES_SETTING = "shipProfiles";
 const lastTokenPositions = new Map();
 const activeMotionEffects = new Map();
 
@@ -24,19 +25,25 @@ class FullSpeedAheadEffectsConfig extends FormApplication {
 
     getData() {
         const tokenDocument = this.tokenDocument;
+        const shipNames = collectVehicleShipNames();
+        const focusedShipName = tokenDocument ? getShipProfileName(tokenDocument) : shipNames[0] ?? "";
+        const focusedProfile = getShipProfile(focusedShipName);
+        const defaultColor = game.settings.get(MODULE_ID, "thrusterColor");
 
         return {
             enableMovementSound: game.settings.get(MODULE_ID, "enableMovementSound"),
             movementSoundPath: game.settings.get(MODULE_ID, "movementSoundPath"),
             movementSoundVolume: game.settings.get(MODULE_ID, "movementSoundVolume"),
             enableThrusterEffect: game.settings.get(MODULE_ID, "enableThrusterEffect"),
-            thrusterColor: game.settings.get(MODULE_ID, "thrusterColor"),
+            thrusterColor: defaultColor,
             thrusterLength: game.settings.get(MODULE_ID, "thrusterLength"),
             thrusterWidth: game.settings.get(MODULE_ID, "thrusterWidth"),
-            tokenName: tokenDocument?.name,
+            shipName: focusedShipName,
+            shipOptions: shipNames.map(name => ({ name, selected: name === focusedShipName })),
+            hasShipProfiles: shipNames.length > 0 || Boolean(focusedShipName),
             isTokenConfig: Boolean(tokenDocument),
-            useTokenThrusterColor: Boolean(tokenDocument?.getFlag(MODULE_ID, THRUSTER_COLOR_FLAG)),
-            tokenThrusterColor: tokenDocument?.getFlag(MODULE_ID, THRUSTER_COLOR_FLAG) ?? game.settings.get(MODULE_ID, "thrusterColor")
+            useShipThrusterColor: Boolean(focusedProfile?.thrusterColor),
+            shipThrusterColor: focusedProfile?.thrusterColor ?? defaultColor
         };
     }
 
@@ -66,8 +73,19 @@ class FullSpeedAheadEffectsConfig extends FormApplication {
             html.find(`[data-color-picker="${target}"]`).val(value);
         });
 
-        html.find('[name="useTokenThrusterColor"]').on("change", event => {
-            html.find('[data-token-color-fields]').toggle(event.currentTarget.checked);
+        html.find('[name="useShipThrusterColor"]').on("change", event => {
+            html.find('[data-ship-color-fields]').toggle(event.currentTarget.checked);
+        });
+
+        html.find('[name="shipProfileName"]').on("change", event => {
+            const profileName = event.currentTarget.value;
+            const profile = getShipProfile(profileName);
+            const defaultColor = game.settings.get(MODULE_ID, "thrusterColor");
+            const color = profile?.thrusterColor ?? defaultColor;
+            html.find('[name="useShipThrusterColor"]').prop("checked", Boolean(profile?.thrusterColor));
+            html.find('[data-ship-color-fields]').toggle(Boolean(profile?.thrusterColor));
+            html.find('[name="shipThrusterColor"]').val(color);
+            html.find('[data-color-text="shipThrusterColor"]').val(color);
         });
     }
 
@@ -87,14 +105,22 @@ class FullSpeedAheadEffectsConfig extends FormApplication {
         }
 
         const tokenDocument = this.tokenDocument;
-        if (!tokenDocument) return;
+        const profileName = String(formData.shipProfileName ?? (tokenDocument ? getShipProfileName(tokenDocument) : "")).trim();
+        if (!profileName) return;
 
-        if (formData.useTokenThrusterColor) {
-            const tokenColor = String(formData.tokenThrusterColor ?? updates.thrusterColor).trim();
-            await tokenDocument.setFlag(MODULE_ID, THRUSTER_COLOR_FLAG, /^#[0-9a-f]{6}$/i.test(tokenColor) ? tokenColor : updates.thrusterColor);
+        const profiles = getShipProfiles();
+        const profileKey = normalizeShipProfileName(profileName);
+        if (formData.useShipThrusterColor) {
+            const shipColor = String(formData.shipThrusterColor ?? updates.thrusterColor).trim();
+            profiles[profileKey] = {
+                name: profileName,
+                thrusterColor: /^#[0-9a-f]{6}$/i.test(shipColor) ? shipColor : updates.thrusterColor
+            };
         } else {
-            await tokenDocument.unsetFlag(MODULE_ID, THRUSTER_COLOR_FLAG);
+            delete profiles[profileKey];
         }
+
+        await game.settings.set(MODULE_ID, SHIP_PROFILES_SETTING, profiles);
     }
 }
 
@@ -204,6 +230,14 @@ Hooks.once("init", () => {
         type: Number,
         default: 0.55,
         range: { min: 0.1, max: 3, step: 0.05 },
+        config: false
+    });
+
+    registerSetting(SHIP_PROFILES_SETTING, {
+        name: "Ship Effect Profiles",
+        hint: "Name-keyed vehicle effect profiles used by Full Speed Ahead.",
+        type: Object,
+        default: {},
         config: false
     });
 
@@ -555,7 +589,42 @@ function getTokenSortValue(token) {
 }
 
 function getThrusterColor(token) {
-    return token.document?.getFlag(MODULE_ID, THRUSTER_COLOR_FLAG) ?? game.settings.get(MODULE_ID, "thrusterColor");
+    const profile = getShipProfile(getShipProfileName(token.document));
+    return profile?.thrusterColor ?? token.document?.getFlag(MODULE_ID, THRUSTER_COLOR_FLAG) ?? game.settings.get(MODULE_ID, "thrusterColor");
+}
+
+function getShipProfiles() {
+    return foundry.utils.deepClone(game.settings.get(MODULE_ID, SHIP_PROFILES_SETTING) ?? {});
+}
+
+function getShipProfile(shipName) {
+    return getShipProfiles()[normalizeShipProfileName(shipName)];
+}
+
+function normalizeShipProfileName(shipName) {
+    return String(shipName ?? "").trim().toLocaleLowerCase();
+}
+
+function getShipProfileName(tokenDocument) {
+    return String(tokenDocument?.name || tokenDocument?.actor?.name || "").trim();
+}
+
+function collectVehicleShipNames() {
+    const names = new Set();
+
+    for (const actor of game.actors ?? []) {
+        if (actor.type === "vehicle") names.add(actor.name);
+    }
+
+    for (const token of canvas?.tokens?.placeables ?? []) {
+        if (token.actor?.type === "vehicle") names.add(getShipProfileName(token.document));
+    }
+
+    for (const profile of Object.values(getShipProfiles())) {
+        if (profile?.name) names.add(profile.name);
+    }
+
+    return Array.from(names).filter(Boolean).sort((a, b) => a.localeCompare(b));
 }
 
 function fadeAndDestroyThruster(controller) {
