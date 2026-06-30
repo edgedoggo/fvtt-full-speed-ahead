@@ -749,7 +749,7 @@ function createUnderTokenThruster(token) {
 
     const layer = canvas.tokens;
     layer.sortableChildren = true;
-    layer.addChild(graphics);
+    layer.addChildAt(graphics, 0);
     return graphics;
 }
 
@@ -770,6 +770,7 @@ function drawThrusterCone(graphics, token, rotation, dimensions = null) {
 
     graphics.clear();
     graphics.zIndex = getTokenSortValue(token) - 1;
+    keepThrusterBelowTokens(graphics);
 
     const coneCount = Math.max(1, Math.min(3, resolvedDimensions.coneCount));
     const scaleFactor = getThrusterScaleFactor(resolvedDimensions.scale);
@@ -819,6 +820,12 @@ function drawSingleThrusterCone(graphics, cone) {
 
 function getTokenSortValue(token) {
     return Number.isFinite(token.mesh?.zIndex) ? token.mesh.zIndex : Number.isFinite(token.zIndex) ? token.zIndex : 0;
+}
+
+function keepThrusterBelowTokens(graphics) {
+    const layer = canvas.tokens;
+    if (!layer || graphics.parent !== layer) return;
+    if (layer.children.indexOf(graphics) > 0) layer.setChildIndex(graphics, 0);
 }
 
 function getThrusterColor(token) {
