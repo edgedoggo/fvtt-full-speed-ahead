@@ -72,6 +72,60 @@
         </div>
     </div>
 
+    <details>
+        <summary><i class="fas fa-cog"></i> Advanced Thruster Cones</summary>
+
+        <div class="form-group">
+            <label>Cone Count</label>
+            <div class="form-fields">
+                <input type="range" name="coneCount" value="{{coneCount}}" min="1" max="3" step="1" data-sync-range="coneCount">
+                <input type="number" value="{{coneCount}}" min="1" max="3" step="1" data-sync-number="coneCount">
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label>Cone Spacing</label>
+            <div class="form-fields">
+                <input type="range" name="coneSpacing" value="{{coneSpacing}}" min="0" max="6" step="0.05" data-sync-range="coneSpacing">
+                <input type="number" value="{{coneSpacing}}" min="0" max="6" step="0.05" data-sync-number="coneSpacing">
+            </div>
+        </div>
+
+        {{#each cones}}
+        <fieldset>
+            <legend>Cone {{number}}</legend>
+
+            {{#if @first}}
+            <p class="notes">Cone 1 uses the ship exhaust color, length, and width above.</p>
+            {{else}}
+            <div class="form-group">
+                <label>Cone {{number}} Color</label>
+                <div class="form-fields">
+                    <input type="color" name="cone{{number}}Color" value="{{color}}" data-color-picker="cone{{number}}Color">
+                    <input type="text" data-color-text="cone{{number}}Color" value="{{color}}">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Cone {{number}} Length</label>
+                <div class="form-fields">
+                    <input type="range" name="cone{{number}}Length" value="{{length}}" min="0.25" max="12" step="0.25" data-sync-range="cone{{number}}Length">
+                    <input type="number" value="{{length}}" min="0.25" max="12" step="0.25" data-sync-number="cone{{number}}Length">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Cone {{number}} Width</label>
+                <div class="form-fields">
+                    <input type="range" name="cone{{number}}Width" value="{{width}}" min="0.1" max="6" step="0.05" data-sync-range="cone{{number}}Width">
+                    <input type="number" value="{{width}}" min="0.1" max="6" step="0.05" data-sync-number="cone{{number}}Width">
+                </div>
+            </div>
+            {{/if}}
+        </fieldset>
+        {{/each}}
+    </details>
+
     <footer class="sheet-footer flexrow">
         <button type="submit">
             <i class="fas fa-save"></i> Save

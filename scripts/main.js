@@ -12,122 +12,6 @@ const lastTokenPositions = new Map();
 const activeMotionEffects = new Map();
 let activeThrusterPreview = null;
 
-class FullSpeedAheadThrusterConfig extends FormApplication {
-    static get defaultOptions() {
-        return foundry.utils.mergeObject(super.defaultOptions, {
-            id: "full-speed-ahead-thruster-config",
-            title: "Full Speed Ahead: Thruster Tuning",
-            template: `modules/${MODULE_ID}/templates/thruster-settings.hbs`,
-            width: 360,
-            closeOnSubmit: true
-        });
-    }
-
-    get tokenDocument() {
-        return this.object?.documentName === "Token" ? this.object : null;
-    }
-
-    getData() {
-        const tokenDocument = this.tokenDocument;
-        const dimensions = getThrusterDimensions(tokenDocument);
-        const color = getThrusterColorForTokenDocument(tokenDocument);
-
-        return {
-            shipName: getShipProfileName(tokenDocument),
-            sceneName: canvas.scene?.name ?? "",
-            thrusterLength: dimensions.length,
-            thrusterWidth: dimensions.width,
-            shipThrusterColor: color
-        };
-    }
-
-    activateListeners(html) {
-        super.activateListeners(html);
-
-        html.find("[data-sync-range]").on("input", event => {
-            const key = event.currentTarget.dataset.syncRange;
-            html.find(`[data-sync-number="${key}"]`).val(event.currentTarget.value);
-            this.previewFromForm(html);
-        });
-        html.find("[data-sync-range]").on("change", () => this.saveFromForm(html));
-
-        html.find("[data-sync-number]").on("input change", event => {
-            const key = event.currentTarget.dataset.syncNumber;
-            html.find(`[data-sync-range="${key}"]`).val(event.currentTarget.value);
-            this.previewFromForm(html);
-        });
-        html.find("[data-sync-number]").on("change", () => this.saveFromForm(html));
-
-        html.find('[data-color-picker]').on("input", event => {
-            const target = event.currentTarget.dataset.colorPicker;
-            html.find(`[data-color-text="${target}"]`).val(event.currentTarget.value);
-            this.previewFromForm(html);
-        });
-
-        html.find('[data-color-text]').on("input change", event => {
-            const value = event.currentTarget.value.trim();
-            if (!/^#[0-9a-f]{6}$/i.test(value)) return;
-
-            const target = event.currentTarget.dataset.colorText;
-            html.find(`[data-color-picker="${target}"]`).val(value);
-            this.previewFromForm(html);
-        });
-
-        html.find("[data-action='reset-thruster-scene']").on("click", async event => {
-            event.preventDefault();
-            await clearSceneThrusterDimensions(this.tokenDocument);
-            this.close();
-        });
-
-        this.previewFromForm(html);
-    }
-
-    getDimensionsFromForm(html) {
-        return {
-            length: clampNumber(Number(html.find("[name='thrusterLength']").val()), 0.25, 12, game.settings.get(MODULE_ID, "thrusterLength")),
-            width: clampNumber(Number(html.find("[name='thrusterWidth']").val()), 0.1, 6, game.settings.get(MODULE_ID, "thrusterWidth"))
-        };
-    }
-
-    getColorFromForm(html) {
-        const fallbackColor = getThrusterColorForTokenDocument(this.tokenDocument);
-        const color = String(html.find("[name='shipThrusterColor']").val() ?? fallbackColor).trim();
-        return /^#[0-9a-f]{6}$/i.test(color) ? color : fallbackColor;
-    }
-
-    previewFromForm(html) {
-        const tokenDocument = this.tokenDocument;
-        const token = canvas.tokens?.get(tokenDocument?.id);
-        if (!token) return;
-
-        const dimensions = this.getDimensionsFromForm(html);
-        const rotation = normalizeDegrees(tokenDocument.rotation ?? token.rotation ?? 0);
-        showThrusterPreview(token, { ...dimensions, rotation, color: this.getColorFromForm(html) });
-    }
-
-    saveFromForm(html) {
-        Promise.all([
-            setSceneThrusterDimensions(this.tokenDocument, this.getDimensionsFromForm(html)),
-            setShipThrusterColor(this.tokenDocument, this.getColorFromForm(html))
-        ])
-            .catch(error => console.warn(`${LOG_PREFIX} Could not save thruster tuning.`, error));
-    }
-
-    async _updateObject(event, formData) {
-        await setSceneThrusterDimensions(this.tokenDocument, {
-            length: Number(formData.thrusterLength),
-            width: Number(formData.thrusterWidth)
-        });
-        await setShipThrusterColor(this.tokenDocument, String(formData.shipThrusterColor ?? "").trim());
-        clearThrusterPreview();
-    }
-
-    async close(options) {
-        clearThrusterPreview();
-        return super.close(options);
-    }
-}
-
 class FullSpeedAheadEffectsConfig extends FormApplication {
     static get defaultOptions() {
         return foundry.utils.mergeObject(super.defaultOptions, {
@@ -159,6 +43,9 @@ class FullSpeedAheadEffectsConfig extends FormApplication {
             enableThrusterEffect: game.settings.get(MODULE_ID, "enableThrusterEffect"),
             thrusterLength: dimensions.length,
             thrusterWidth: dimensions.width,
+            coneCount: dimensions.coneCount,
+            coneSpacing: dimensions.coneSpacing,
+            cones: dimensions.cones.map((cone, index) => ({ ...cone, number: index + 1 })),
             shipName: focusedShipName,
             shipOptions: shipNames.map(name => ({ name, selected: name === focusedShipName })),
             hasShipProfiles: shipNames.length > 0 || Boolean(focusedShipName),
@@ -183,25 +70,31 @@ class FullSpeedAheadEffectsConfig extends FormApplication {
         html.find("[data-sync-range]").on("input", event => {
             const key = event.currentTarget.dataset.syncRange;
             html.find(`[data-sync-number="${key}"]`).val(event.currentTarget.value);
+            this.previewFromForm(html);
         });
 
         html.find("[data-sync-number]").on("input change", event => {
             const key = event.currentTarget.dataset.syncNumber;
             html.find(`[data-sync-range="${key}"]`).val(event.currentTarget.value);
+            this.previewFromForm(html);
         });
 
         html.find('[data-color-picker]').on("input", event => {
             const target = event.currentTarget.dataset.colorPicker;
             html.find(`[data-color-text="${target}"]`).val(event.currentTarget.value);
+            this.previewFromForm(html);
         });
 
-        html.find('[data-color-text]').on("change", event => {
+        html.find('[data-color-text]').on("input change", event => {
             const value = event.currentTarget.value.trim();
             if (!/^#[0-9a-f]{6}$/i.test(value)) return;
 
             const target = event.currentTarget.dataset.colorText;
             html.find(`[data-color-picker="${target}"]`).val(value);
+            this.previewFromForm(html);
         });
+
+        html.find('[name="coneCount"]').on("input change", () => this.previewFromForm(html));
 
         html.find('[name="shipProfileName"]').on("change", event => {
             const profileName = event.currentTarget.value;
@@ -217,9 +110,56 @@ class FullSpeedAheadEffectsConfig extends FormApplication {
             html.find('[data-sync-number="thrusterLength"]').val(dimensions.length);
             html.find('[name="thrusterWidth"]').val(dimensions.width);
             html.find('[data-sync-number="thrusterWidth"]').val(dimensions.width);
+            html.find('[name="coneCount"]').val(dimensions.coneCount);
+            html.find('[data-sync-number="coneCount"]').val(dimensions.coneCount);
+            html.find('[name="coneSpacing"]').val(dimensions.coneSpacing);
+            html.find('[data-sync-number="coneSpacing"]').val(dimensions.coneSpacing);
+            dimensions.cones.forEach((cone, index) => {
+                const number = index + 1;
+                html.find(`[name="cone${number}Color"]`).val(cone.color);
+                html.find(`[data-color-text="cone${number}Color"]`).val(cone.color);
+                html.find(`[name="cone${number}Length"]`).val(cone.length);
+                html.find(`[data-sync-number="cone${number}Length"]`).val(cone.length);
+                html.find(`[name="cone${number}Width"]`).val(cone.width);
+                html.find(`[data-sync-number="cone${number}Width"]`).val(cone.width);
+            });
             html.find('[name="shipThrusterColor"]').val(color);
             html.find('[data-color-text="shipThrusterColor"]').val(color);
+            this.previewFromForm(html);
         });
+
+        this.previewFromForm(html);
+    }
+
+    getThrusterConfigFromForm(html) {
+        const fallbackColor = getThrusterColorForTokenDocument(this.tokenDocument);
+        const baseLength = clampNumber(Number(html.find("[name='thrusterLength']").val()), 0.25, 12, getSettingNumber("thrusterLength", 1.25));
+        const baseWidth = clampNumber(Number(html.find("[name='thrusterWidth']").val()), 0.1, 6, getSettingNumber("thrusterWidth", 0.55));
+        const baseColor = normalizeHexColor(html.find("[name='shipThrusterColor']").val(), fallbackColor);
+        const coneCount = Math.round(clampNumber(Number(html.find("[name='coneCount']").val()), 1, 3, 1));
+        const coneSpacing = clampNumber(Number(html.find("[name='coneSpacing']").val()), 0, 6, 0.45);
+        const cones = [0, 1, 2].map(index => ({
+            color: normalizeHexColor(html.find(`[name='cone${index + 1}Color']`).val(), index === 0 ? baseColor : baseColor),
+            length: clampNumber(Number(html.find(`[name='cone${index + 1}Length']`).val()), 0.25, 12, baseLength),
+            width: clampNumber(Number(html.find(`[name='cone${index + 1}Width']`).val()), 0.1, 6, baseWidth)
+        }));
+
+        cones[0] = {
+            color: normalizeHexColor(cones[0].color, baseColor),
+            length: baseLength,
+            width: baseWidth
+        };
+
+        return { length: baseLength, width: baseWidth, color: baseColor, coneCount, coneSpacing, cones };
+    }
+
+    previewFromForm(html) {
+        const tokenDocument = this.tokenDocument;
+        const token = canvas.tokens?.get(tokenDocument?.id);
+        if (!token) return;
+
+        const rotation = normalizeDegrees(tokenDocument.rotation ?? token.rotation ?? 0);
+        showThrusterPreview(token, { ...this.getThrusterConfigFromForm(html), rotation });
     }
 
     async _updateObject(event, formData) {
@@ -239,6 +179,7 @@ class FullSpeedAheadEffectsConfig extends FormApplication {
             await game.settings.set(MODULE_ID, "movementSoundVolume", clampNumber(Number(formData.movementSoundVolume), 0, 1, game.settings.get(MODULE_ID, "movementSoundVolume")));
             await game.settings.set(MODULE_ID, "thrusterLength", Number(formData.thrusterLength));
             await game.settings.set(MODULE_ID, "thrusterWidth", Number(formData.thrusterWidth));
+            clearThrusterPreview();
             return;
         }
 
@@ -256,10 +197,13 @@ class FullSpeedAheadEffectsConfig extends FormApplication {
 
         profiles[profileKey] = profile;
         await game.settings.set(MODULE_ID, SHIP_PROFILES_SETTING, profiles);
-        await setSceneThrusterDimensionsForProfile(canvas.scene?.id, profileName, {
-            length: Number(formData.thrusterLength),
-            width: Number(formData.thrusterWidth)
-        });
+        await setSceneThrusterDimensionsForProfile(canvas.scene?.id, profileName, this.getThrusterConfigFromForm($(event.currentTarget)));
+        clearThrusterPreview();
+    }
+
+    async close(options) {
+        clearThrusterPreview();
+        return super.close(options);
     }
 }
 
@@ -507,26 +451,9 @@ Hooks.on("renderTokenHUD", (app, html, data) => {
         new FullSpeedAheadEffectsConfig(token.document).render(true);
     });
 
-    const thrusterButton = $(`
-        <div class="control-icon full-speed-ahead-thruster" title="Tune Full Speed Ahead Thruster Size">
-            <i class="fas fa-fire"></i>
-        </div>
-    `);
-    thrusterButton.css({
-        background: "rgba(210, 88, 20, 0.86)",
-        border: "1px solid rgba(255, 190, 110, 0.95)",
-        color: "#ffffff",
-        boxShadow: "0 0 10px rgba(255, 135, 45, 0.65)"
-    });
-    thrusterButton.on("click", event => {
-        event.preventDefault();
-        event.stopPropagation();
-        new FullSpeedAheadThrusterConfig(token.document).render(true);
-    });
-
     const leftColumn = html.find(".col.left");
-    if (leftColumn.length) leftColumn.append(effectsButton, thrusterButton);
-    else html.append(effectsButton, thrusterButton);
+    if (leftColumn.length) leftColumn.append(effectsButton);
+    else html.append(effectsButton);
 });
 
 function registerSetting(key, data) {
@@ -614,6 +541,11 @@ function getSettingNumber(key, fallback) {
 function clampNumber(value, min, max, fallback) {
     if (!Number.isFinite(value)) return fallback;
     return Math.max(min, Math.min(max, value));
+}
+
+function normalizeHexColor(value, fallback = DEFAULT_THRUSTER_COLOR) {
+    const color = String(value ?? "").trim();
+    return /^#[0-9a-f]{6}$/i.test(color) ? color : fallback;
 }
 
 function playMovementSound(tokenDocument, userId) {
@@ -783,10 +715,7 @@ function createUnderTokenThruster(token) {
 function drawThrusterCone(graphics, token, rotation, dimensions = null) {
     if (!graphics || graphics.destroyed) return;
 
-    const resolvedDimensions = dimensions ?? getThrusterDimensions(token.document);
-    const length = resolvedDimensions.length * canvas.grid.size;
-    const width = resolvedDimensions.width * canvas.grid.size;
-    const color = hexToNumber(dimensions?.color ?? getThrusterColor(token), 0x40c7ff);
+    const resolvedDimensions = normalizeThrusterConfig(dimensions ?? getThrusterDimensions(token.document), getThrusterColor(token));
     const centerX = token.x + token.w / 2;
     const centerY = token.y + token.h / 2;
     const radians = normalizeDegrees(rotation) * Math.PI / 180;
@@ -797,30 +726,50 @@ function drawThrusterCone(graphics, token, rotation, dimensions = null) {
     const rearDistance = Math.min(token.w, token.h) * 0.48;
     const rearX = centerX - forwardX * rearDistance;
     const rearY = centerY - forwardY * rearDistance;
-    const tipX = rearX - forwardX * length;
-    const tipY = rearY - forwardY * length;
 
     graphics.clear();
     graphics.zIndex = getTokenSortValue(token) - 1;
 
+    const coneCount = Math.max(1, Math.min(3, resolvedDimensions.coneCount));
+    for (let coneIndex = 0; coneIndex < coneCount; coneIndex++) {
+        const cone = resolvedDimensions.cones[coneIndex] ?? resolvedDimensions.cones[0];
+        const offset = (coneIndex - (coneCount - 1) / 2) * resolvedDimensions.coneSpacing * canvas.grid.size;
+        drawSingleThrusterCone(graphics, {
+            rearX: rearX + sideX * offset,
+            rearY: rearY + sideY * offset,
+            forwardX,
+            forwardY,
+            sideX,
+            sideY,
+            length: cone.length * canvas.grid.size,
+            width: cone.width * canvas.grid.size,
+            color: hexToNumber(cone.color, 0x40c7ff)
+        });
+    }
+}
+
+function drawSingleThrusterCone(graphics, cone) {
+    const tipX = cone.rearX - cone.forwardX * cone.length;
+    const tipY = cone.rearY - cone.forwardY * cone.length;
     const segments = 8;
+
     for (let i = 0; i < segments; i++) {
         const start = i / segments;
         const end = (i + 1) / segments;
-        const startWidth = width * (1 - start);
-        const endWidth = width * (1 - end);
+        const startWidth = cone.width * (1 - start);
+        const endWidth = cone.width * (1 - end);
         const alpha = 0.65 * Math.pow(1 - start, 1.8);
-        const startX = rearX + (tipX - rearX) * start;
-        const startY = rearY + (tipY - rearY) * start;
-        const endX = rearX + (tipX - rearX) * end;
-        const endY = rearY + (tipY - rearY) * end;
+        const startX = cone.rearX + (tipX - cone.rearX) * start;
+        const startY = cone.rearY + (tipY - cone.rearY) * start;
+        const endX = cone.rearX + (tipX - cone.rearX) * end;
+        const endY = cone.rearY + (tipY - cone.rearY) * end;
 
-        graphics.beginFill(color, alpha);
+        graphics.beginFill(cone.color, alpha);
         graphics.drawPolygon([
-            startX + sideX * startWidth / 2, startY + sideY * startWidth / 2,
-            startX - sideX * startWidth / 2, startY - sideY * startWidth / 2,
-            endX - sideX * endWidth / 2, endY - sideY * endWidth / 2,
-            endX + sideX * endWidth / 2, endY + sideY * endWidth / 2
+            startX + cone.sideX * startWidth / 2, startY + cone.sideY * startWidth / 2,
+            startX - cone.sideX * startWidth / 2, startY - cone.sideY * startWidth / 2,
+            endX - cone.sideX * endWidth / 2, endY - cone.sideY * endWidth / 2,
+            endX + cone.sideX * endWidth / 2, endY + cone.sideY * endWidth / 2
         ]);
         graphics.endFill();
     }
@@ -862,10 +811,32 @@ function getThrusterDimensions(tokenDocument) {
 
 function getThrusterDimensionsForProfile(sceneId, shipName) {
     const sceneProfile = getSceneThrusterProfile(sceneId, shipName);
-    return {
-        length: clampNumber(Number(sceneProfile?.length), 0.25, 12, getSettingNumber("thrusterLength", 1.25)),
-        width: clampNumber(Number(sceneProfile?.width), 0.1, 6, getSettingNumber("thrusterWidth", 0.55))
-    };
+    const color = getShipProfile(shipName)?.thrusterColor ?? game.settings.get(MODULE_ID, "thrusterColor") ?? DEFAULT_THRUSTER_COLOR;
+    const config = normalizeThrusterConfig(sceneProfile, color);
+    config.color = color;
+    config.cones[0] = { ...config.cones[0], color };
+    return config;
+}
+
+function normalizeThrusterConfig(config, fallbackColor = DEFAULT_THRUSTER_COLOR) {
+    const length = clampNumber(Number(config?.length), 0.25, 12, getSettingNumber("thrusterLength", 1.25));
+    const width = clampNumber(Number(config?.width), 0.1, 6, getSettingNumber("thrusterWidth", 0.55));
+    const color = normalizeHexColor(config?.color, fallbackColor);
+    const coneCount = Math.round(clampNumber(Number(config?.coneCount), 1, 3, 1));
+    const coneSpacing = clampNumber(Number(config?.coneSpacing), 0, 6, 0.45);
+    const rawCones = Array.isArray(config?.cones) ? config.cones : [];
+    const cones = [0, 1, 2].map(index => {
+        const cone = rawCones[index] ?? {};
+        return {
+            color: normalizeHexColor(cone.color, index === 0 ? color : color),
+            length: clampNumber(Number(cone.length), 0.25, 12, length),
+            width: clampNumber(Number(cone.width), 0.1, 6, width)
+        };
+    });
+
+    cones[0] = { color, length, width };
+
+    return { length, width, color, coneCount, coneSpacing, cones };
 }
 
 function getSceneThrusterProfiles() {
@@ -896,8 +867,7 @@ async function setSceneThrusterDimensionsForProfile(sceneId, shipName, dimension
     profiles[getSceneThrusterProfileKey(sceneId, profileName)] = {
         sceneId: sceneId || "global",
         name: profileName,
-        length: clampNumber(Number(dimensions.length), 0.25, 12, getSettingNumber("thrusterLength", 1.25)),
-        width: clampNumber(Number(dimensions.width), 0.1, 6, getSettingNumber("thrusterWidth", 0.55))
+        ...normalizeThrusterConfig(dimensions, getShipProfile(profileName)?.thrusterColor ?? DEFAULT_THRUSTER_COLOR)
     };
     await game.settings.set(MODULE_ID, SCENE_THRUSTER_PROFILES_SETTING, profiles);
 }
