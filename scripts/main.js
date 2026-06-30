@@ -35,7 +35,7 @@ class FullSpeedAheadEffectsConfig extends FormApplication {
         const focusedProfile = getShipProfile(focusedShipName);
         const fallbackColor = game.settings.get(MODULE_ID, "thrusterColor") || DEFAULT_THRUSTER_COLOR;
         const movementSound = getMovementSoundOptions(tokenDocument, focusedProfile);
-        const dimensions = getThrusterDimensions(tokenDocument);
+        const dimensions = getThrusterDimensionsForProfile(canvas.scene?.id, focusedShipName);
 
         return {
             enableMovementSound: game.settings.get(MODULE_ID, "enableMovementSound"),
@@ -49,7 +49,7 @@ class FullSpeedAheadEffectsConfig extends FormApplication {
             thrusterInverted: dimensions.cones[0]?.inverted,
             coneCount: dimensions.coneCount,
             coneSpacing: dimensions.coneSpacing,
-            extraCones: dimensions.cones.slice(1).map((cone, index) => ({ ...cone, number: index + 1 })),
+            extraCones: dimensions.cones.slice(1).map((cone, index) => ({ ...cone, letter: index === 0 ? "A" : "B", index: index + 1 })),
             shipName: focusedShipName,
             tokenName: tokenDocument ? getDefaultShipProfileName(tokenDocument) : "",
             profileAssigned: tokenDocument ? getAssignedShipProfileName(tokenDocument) === focusedShipName : false,
@@ -100,7 +100,10 @@ class FullSpeedAheadEffectsConfig extends FormApplication {
             this.previewFromForm(html);
         });
 
-        html.find('[name="coneCount"]').on("input change", () => this.previewFromForm(html));
+        html.find('[name="coneCount"]').on("input change", () => {
+            this.updateConeVisibility(html);
+            this.previewFromForm(html);
+        });
         html.find('[name="thrusterInverted"], [name^="extraCone"][name$="Inverted"]').on("change", () => this.previewFromForm(html));
 
         html.find('[name="shipProfileName"]').on("change", event => {
@@ -138,14 +141,26 @@ class FullSpeedAheadEffectsConfig extends FormApplication {
             });
             html.find('[name="shipThrusterColor"]').val(color);
             html.find('[data-color-text="shipThrusterColor"]').val(color);
+            this.updateConeVisibility(html);
             this.previewFromForm(html);
         });
 
+        this.updateConeVisibility(html);
         this.previewFromForm(html);
+    }
+
+    updateConeVisibility(html) {
+        const coneCount = Math.round(clampNumber(Number(html.find("[name='coneCount']").val()), 1, 3, 1));
+        html.find("[data-extra-thrust-index]").each((index, element) => {
+            const extraIndex = Number(element.dataset.extraThrustIndex);
+            $(element).toggle(extraIndex < coneCount);
+        });
     }
 
     getThrusterConfigFromForm(html) {
         const fallbackColor = getThrusterColorForTokenDocument(this.tokenDocument);
+        const profileName = String(html.find("[name='shipProfileName']").val() ?? (this.tokenDocument ? getShipProfileName(this.tokenDocument) : "")).trim();
+        const existingDimensions = getThrusterDimensionsForProfile(canvas.scene?.id, profileName);
         const scale = clampNumber(Number(html.find("[name='thrusterScale']").val()), -10, 10, 0);
         const position = clampNumber(Number(html.find("[name='thrusterPosition']").val()), -6, 6, 0);
         const baseLength = clampNumber(Number(html.find("[name='thrusterLength']").val()), 0.25, 12, getSettingNumber("thrusterLength", 1.25));
@@ -162,11 +177,12 @@ class FullSpeedAheadEffectsConfig extends FormApplication {
 
         for (let index = 0; index < 2; index++) {
             const number = index + 1;
+            const existingCone = existingDimensions.cones[number] ?? existingDimensions.cones[0];
             cones.push({
-                color: normalizeHexColor(html.find(`[name='extraCone${number}Color']`).val(), baseColor),
-                length: clampNumber(Number(html.find(`[name='extraCone${number}Length']`).val()), 0.25, 12, baseLength),
-                width: clampNumber(Number(html.find(`[name='extraCone${number}Width']`).val()), 0.1, 6, baseWidth),
-                inverted: html.find(`[name='extraCone${number}Inverted']`).is(":checked")
+                color: normalizeHexColor(html.find(`[name='extraCone${number}Color']`).val(), existingCone.color ?? baseColor),
+                length: clampNumber(Number(html.find(`[name='extraCone${number}Length']`).val()), 0.25, 12, existingCone.length ?? baseLength),
+                width: clampNumber(Number(html.find(`[name='extraCone${number}Width']`).val()), 0.1, 6, existingCone.width ?? baseWidth),
+                inverted: html.find(`[name='extraCone${number}Inverted']`).length ? html.find(`[name='extraCone${number}Inverted']`).is(":checked") : Boolean(existingCone.inverted)
             });
         }
 

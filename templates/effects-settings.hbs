@@ -51,7 +51,7 @@
     </div>
 
     <div class="form-group">
-        <label>Ship Exhaust Color</label>
+        <label>Primary Thrust Color</label>
         <div class="form-fields">
             <input type="color" name="shipThrusterColor" value="{{shipThrusterColor}}" data-color-picker="shipThrusterColor">
             <input type="text" data-color-text="shipThrusterColor" value="{{shipThrusterColor}}">
@@ -76,7 +76,7 @@
     </div>
 
     <div class="form-group">
-        <label>Thruster Length</label>
+        <label>Primary Thrust Length</label>
         <div class="form-fields">
             <input type="range" name="thrusterLength" value="{{thrusterLength}}" min="0.25" max="12" step="0.25" data-sync-range="thrusterLength">
             <input type="number" value="{{thrusterLength}}" min="0.25" max="12" step="0.25" data-sync-number="thrusterLength">
@@ -84,7 +84,7 @@
     </div>
 
     <div class="form-group">
-        <label>Thruster Width</label>
+        <label>Primary Thrust Width</label>
         <div class="form-fields">
             <input type="range" name="thrusterWidth" value="{{thrusterWidth}}" min="0.1" max="6" step="0.05" data-sync-range="thrusterWidth">
             <input type="number" value="{{thrusterWidth}}" min="0.1" max="6" step="0.05" data-sync-number="thrusterWidth">
@@ -92,24 +92,24 @@
     </div>
 
     <div class="form-group">
-        <label>Invert Center Cone</label>
+        <label>Invert Primary Thrust</label>
         <input type="checkbox" name="thrusterInverted" {{checked thrusterInverted}}>
     </div>
 
     <details>
-        <summary><i class="fas fa-cog"></i> Advanced Thruster Cones</summary>
+        <summary><i class="fas fa-cog"></i> Advanced Thrust</summary>
 
         <div class="form-group">
-            <label>Cone Count</label>
+            <label>Thrust Count</label>
             <div class="form-fields">
                 <input type="range" name="coneCount" value="{{coneCount}}" min="1" max="3" step="1" data-sync-range="coneCount">
                 <input type="number" value="{{coneCount}}" min="1" max="3" step="1" data-sync-number="coneCount">
             </div>
-            <p class="notes">Cone count includes the center cone above. Additional cones use the controls below.</p>
+            <p class="notes">Thrust count includes Primary Thrust. Additional thrust controls appear as needed.</p>
         </div>
 
         <div class="form-group">
-            <label>Cone Spacing</label>
+            <label>Thrust Spacing</label>
             <div class="form-fields">
                 <input type="range" name="coneSpacing" value="{{coneSpacing}}" min="0" max="6" step="0.05" data-sync-range="coneSpacing">
                 <input type="number" value="{{coneSpacing}}" min="0" max="6" step="0.05" data-sync-number="coneSpacing">
@@ -117,36 +117,36 @@
         </div>
 
         {{#each extraCones}}
-        <fieldset>
-            <legend>Additional Cone {{number}}</legend>
+        <fieldset data-extra-thrust-index="{{index}}">
+            <legend>Additional Thrust {{letter}}</legend>
 
             <div class="form-group">
-                <label>Additional Cone {{number}} Color</label>
+                <label>Color</label>
                 <div class="form-fields">
-                    <input type="color" name="extraCone{{number}}Color" value="{{color}}" data-color-picker="extraCone{{number}}Color">
-                    <input type="text" data-color-text="extraCone{{number}}Color" value="{{color}}">
+                    <input type="color" name="extraCone{{index}}Color" value="{{color}}" data-color-picker="extraCone{{index}}Color">
+                    <input type="text" data-color-text="extraCone{{index}}Color" value="{{color}}">
                 </div>
             </div>
 
             <div class="form-group">
-                <label>Additional Cone {{number}} Length</label>
+                <label>Length</label>
                 <div class="form-fields">
-                    <input type="range" name="extraCone{{number}}Length" value="{{length}}" min="0.25" max="12" step="0.25" data-sync-range="extraCone{{number}}Length">
-                    <input type="number" value="{{length}}" min="0.25" max="12" step="0.25" data-sync-number="extraCone{{number}}Length">
+                    <input type="range" name="extraCone{{index}}Length" value="{{length}}" min="0.25" max="12" step="0.25" data-sync-range="extraCone{{index}}Length">
+                    <input type="number" value="{{length}}" min="0.25" max="12" step="0.25" data-sync-number="extraCone{{index}}Length">
                 </div>
             </div>
 
             <div class="form-group">
-                <label>Additional Cone {{number}} Width</label>
+                <label>Width</label>
                 <div class="form-fields">
-                    <input type="range" name="extraCone{{number}}Width" value="{{width}}" min="0.1" max="6" step="0.05" data-sync-range="extraCone{{number}}Width">
-                    <input type="number" value="{{width}}" min="0.1" max="6" step="0.05" data-sync-number="extraCone{{number}}Width">
+                    <input type="range" name="extraCone{{index}}Width" value="{{width}}" min="0.1" max="6" step="0.05" data-sync-range="extraCone{{index}}Width">
+                    <input type="number" value="{{width}}" min="0.1" max="6" step="0.05" data-sync-number="extraCone{{index}}Width">
                 </div>
             </div>
 
             <div class="form-group">
-                <label>Invert Additional Cone {{number}}</label>
-                <input type="checkbox" name="extraCone{{number}}Inverted" {{checked inverted}}>
+                <label>Invert</label>
+                <input type="checkbox" name="extraCone{{index}}Inverted" {{checked inverted}}>
             </div>
         </fieldset>
         {{/each}}
