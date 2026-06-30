@@ -45,6 +45,7 @@ class FullSpeedAheadEffectsConfig extends FormApplication {
             thrusterScale: dimensions.scale,
             thrusterLength: dimensions.length,
             thrusterWidth: dimensions.width,
+            thrusterInverted: dimensions.cones[0]?.inverted,
             coneCount: dimensions.coneCount,
             coneSpacing: dimensions.coneSpacing,
             extraCones: dimensions.cones.slice(1).map((cone, index) => ({ ...cone, number: index + 1 })),
@@ -99,6 +100,7 @@ class FullSpeedAheadEffectsConfig extends FormApplication {
         });
 
         html.find('[name="coneCount"]').on("input change", () => this.previewFromForm(html));
+        html.find('[name="thrusterInverted"], [name^="extraCone"][name$="Inverted"]').on("change", () => this.previewFromForm(html));
 
         html.find('[name="shipProfileName"]').on("change", event => {
             const profileName = event.currentTarget.value;
@@ -116,6 +118,7 @@ class FullSpeedAheadEffectsConfig extends FormApplication {
             html.find('[data-sync-number="thrusterLength"]').val(dimensions.length);
             html.find('[name="thrusterWidth"]').val(dimensions.width);
             html.find('[data-sync-number="thrusterWidth"]').val(dimensions.width);
+            html.find('[name="thrusterInverted"]').prop("checked", Boolean(dimensions.cones[0]?.inverted));
             html.find('[name="coneCount"]').val(dimensions.coneCount);
             html.find('[data-sync-number="coneCount"]').val(dimensions.coneCount);
             html.find('[name="coneSpacing"]').val(dimensions.coneSpacing);
@@ -128,6 +131,7 @@ class FullSpeedAheadEffectsConfig extends FormApplication {
                 html.find(`[data-sync-number="extraCone${number}Length"]`).val(cone.length);
                 html.find(`[name="extraCone${number}Width"]`).val(cone.width);
                 html.find(`[data-sync-number="extraCone${number}Width"]`).val(cone.width);
+                html.find(`[name="extraCone${number}Inverted"]`).prop("checked", Boolean(cone.inverted));
             });
             html.find('[name="shipThrusterColor"]').val(color);
             html.find('[data-color-text="shipThrusterColor"]').val(color);
@@ -148,7 +152,8 @@ class FullSpeedAheadEffectsConfig extends FormApplication {
         const cones = [{
             color: baseColor,
             length: baseLength,
-            width: baseWidth
+            width: baseWidth,
+            inverted: html.find("[name='thrusterInverted']").is(":checked")
         }];
 
         for (let index = 0; index < 2; index++) {
@@ -156,7 +161,8 @@ class FullSpeedAheadEffectsConfig extends FormApplication {
             cones.push({
                 color: normalizeHexColor(html.find(`[name='extraCone${number}Color']`).val(), baseColor),
                 length: clampNumber(Number(html.find(`[name='extraCone${number}Length']`).val()), 0.25, 12, baseLength),
-                width: clampNumber(Number(html.find(`[name='extraCone${number}Width']`).val()), 0.1, 6, baseWidth)
+                width: clampNumber(Number(html.find(`[name='extraCone${number}Width']`).val()), 0.1, 6, baseWidth),
+                inverted: html.find(`[name='extraCone${number}Inverted']`).is(":checked")
             });
         }
 
@@ -788,7 +794,8 @@ function drawThrusterCone(graphics, token, rotation, dimensions = null) {
             sideY,
             length: cone.length * scaleFactor * canvas.grid.size,
             width: cone.width * scaleFactor * canvas.grid.size,
-            color: hexToNumber(cone.color, 0x40c7ff)
+            color: hexToNumber(cone.color, 0x40c7ff),
+            inverted: Boolean(cone.inverted)
         });
     }
 }
@@ -801,8 +808,8 @@ function drawSingleThrusterCone(graphics, cone) {
     for (let i = 0; i < segments; i++) {
         const start = i / segments;
         const end = (i + 1) / segments;
-        const startWidth = cone.width * (1 - start);
-        const endWidth = cone.width * (1 - end);
+        const startWidth = cone.width * (cone.inverted ? start : 1 - start);
+        const endWidth = cone.width * (cone.inverted ? end : 1 - end);
         const alpha = 0.65 * Math.pow(1 - start, 1.8);
         const startX = cone.rearX + (tipX - cone.rearX) * start;
         const startY = cone.rearY + (tipY - cone.rearY) * start;
@@ -876,11 +883,12 @@ function normalizeThrusterConfig(config, fallbackColor = DEFAULT_THRUSTER_COLOR)
         return {
             color: normalizeHexColor(cone.color, index === 0 ? color : color),
             length: clampNumber(Number(cone.length), 0.25, 12, length),
-            width: clampNumber(Number(cone.width), 0.1, 6, width)
+            width: clampNumber(Number(cone.width), 0.1, 6, width),
+            inverted: Boolean(cone.inverted)
         };
     });
 
-    cones[0] = { color, length, width };
+    cones[0] = { ...cones[0], color, length, width };
 
     return { scale, length, width, color, coneCount, coneSpacing, cones };
 }
