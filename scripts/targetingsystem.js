@@ -298,10 +298,9 @@ export class TargetingSystem {
 
 // Register the module function
 Hooks.on('ready', () => {
-    if (game.settings.get('full-speed-ahead', 'enableTargetingSystem')) {
-        game.modules.get('full-speed-ahead').api = {
-            highlightWeaponRange: TargetingSystem.highlightWeaponRange
-        };
-        console.log('Targeting System has been initialized');
-    }
+    game.modules.get('full-speed-ahead').api = {
+        ...(game.modules.get('full-speed-ahead').api ?? {}),
+        highlightWeaponRange: TargetingSystem.highlightWeaponRange
+    };
+    console.log('Targeting System has been initialized');
 });

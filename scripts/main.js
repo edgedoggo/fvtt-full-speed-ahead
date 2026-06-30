@@ -386,11 +386,11 @@ Hooks.once("init", () => {
     });
 
     registerTargetingSettings();
+    addTargetingSystemButton();
 });
 
 Hooks.on("ready", () => {
     console.log(`${LOG_PREFIX} Ready.`);
-    addTargetingSystemButton();
 });
 
 Hooks.on("preUpdateToken", (tokenDocument, changes, options, userId) => {
@@ -492,17 +492,17 @@ function registerTargetingSettings() {
 }
 
 function addTargetingSystemButton() {
-    if (!game.settings.get(MODULE_ID, "enableTargetingSystem")) return;
-    const showForGM = game.settings.get(MODULE_ID, "enableTargetingSystemGM") && game.user.isGM;
-    const showForPlayers = game.settings.get(MODULE_ID, "enableTargetingSystemPlayers") && !game.user.isGM;
-    if (!showForGM && !showForPlayers) return;
-
     Hooks.on("getSceneControlButtons", controls => {
-        const tokenControl = controls.find(control => control.name === "token");
+        if (!game.settings.get(MODULE_ID, "enableTargetingSystem")) return;
+
+        const showForGM = game.settings.get(MODULE_ID, "enableTargetingSystemGM") && game.user.isGM;
+        const showForPlayers = game.settings.get(MODULE_ID, "enableTargetingSystemPlayers") && !game.user.isGM;
+        if (!showForGM && !showForPlayers) return;
+
+        const tokenControl = getTokenSceneControl(controls);
         if (!tokenControl) return;
 
-        tokenControl.tools = tokenControl.tools.filter(tool => tool.name !== "highlight-weapon-range");
-        tokenControl.tools.push({
+        const targetingTool = {
             name: "highlight-weapon-range",
             title: "Use Targeting System",
             icon: "fas fa-crosshairs",
@@ -512,8 +512,20 @@ function addTargetingSystemButton() {
                 if (api?.highlightWeaponRange) api.highlightWeaponRange();
                 else ui.notifications.warn("Full Speed Ahead targeting is not ready yet.");
             }
-        });
+        };
+
+        if (Array.isArray(tokenControl.tools)) {
+            tokenControl.tools = tokenControl.tools.filter(tool => tool.name !== targetingTool.name);
+            tokenControl.tools.push(targetingTool);
+        } else if (tokenControl.tools && typeof tokenControl.tools === "object") {
+            tokenControl.tools[targetingTool.name] = targetingTool;
+        }
     });
+}
+
+function getTokenSceneControl(controls) {
+    if (Array.isArray(controls)) return controls.find(control => control.name === "token");
+    return controls?.token ?? Object.values(controls ?? {}).find(control => control.name === "token");
 }
 
 function isVehicleDocument(tokenDocument) {
