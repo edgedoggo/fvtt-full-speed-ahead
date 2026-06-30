@@ -6,6 +6,7 @@ const LOG_PREFIX = "[Full Speed Ahead]";
 const THRUSTER_COLOR_FLAG = "thrusterColor";
 const SHIP_PROFILES_SETTING = "shipProfiles";
 const DEFAULT_MOVEMENT_SOUND_PATH = "modules/full-speed-ahead/sounds/lockon.ogg";
+const DEFAULT_THRUSTER_COLOR = "#40c7ff";
 const lastTokenPositions = new Map();
 const activeMotionEffects = new Map();
 
@@ -29,7 +30,7 @@ class FullSpeedAheadEffectsConfig extends FormApplication {
         const shipNames = collectVehicleShipNames();
         const focusedShipName = tokenDocument ? getShipProfileName(tokenDocument) : shipNames[0] ?? "";
         const focusedProfile = getShipProfile(focusedShipName);
-        const defaultColor = game.settings.get(MODULE_ID, "thrusterColor");
+        const fallbackColor = game.settings.get(MODULE_ID, "thrusterColor") || DEFAULT_THRUSTER_COLOR;
         const movementSound = getMovementSoundOptions(tokenDocument, focusedProfile);
 
         return {
@@ -37,15 +38,13 @@ class FullSpeedAheadEffectsConfig extends FormApplication {
             movementSoundPath: movementSound.src,
             movementSoundVolume: movementSound.volume,
             enableThrusterEffect: game.settings.get(MODULE_ID, "enableThrusterEffect"),
-            thrusterColor: defaultColor,
             thrusterLength: game.settings.get(MODULE_ID, "thrusterLength"),
             thrusterWidth: game.settings.get(MODULE_ID, "thrusterWidth"),
             shipName: focusedShipName,
             shipOptions: shipNames.map(name => ({ name, selected: name === focusedShipName })),
             hasShipProfiles: shipNames.length > 0 || Boolean(focusedShipName),
             isTokenConfig: Boolean(tokenDocument),
-            useShipThrusterColor: Boolean(focusedProfile?.thrusterColor),
-            shipThrusterColor: focusedProfile?.thrusterColor ?? defaultColor
+            shipThrusterColor: focusedProfile?.thrusterColor ?? fallbackColor
         };
     }
 
@@ -85,21 +84,15 @@ class FullSpeedAheadEffectsConfig extends FormApplication {
             html.find(`[data-color-picker="${target}"]`).val(value);
         });
 
-        html.find('[name="useShipThrusterColor"]').on("change", event => {
-            html.find('[data-ship-color-fields]').toggle(event.currentTarget.checked);
-        });
-
         html.find('[name="shipProfileName"]').on("change", event => {
             const profileName = event.currentTarget.value;
             const profile = getShipProfile(profileName);
-            const defaultColor = game.settings.get(MODULE_ID, "thrusterColor");
+            const fallbackColor = game.settings.get(MODULE_ID, "thrusterColor") || DEFAULT_THRUSTER_COLOR;
             const movementSound = getMovementSoundOptions(null, profile);
-            const color = profile?.thrusterColor ?? defaultColor;
+            const color = profile?.thrusterColor ?? fallbackColor;
             html.find('[name="movementSoundPath"]').val(movementSound.src);
             html.find('[name="movementSoundVolume"]').val(movementSound.volume);
             html.find('[data-sync-number="movementSoundVolume"]').val(movementSound.volume);
-            html.find('[name="useShipThrusterColor"]').prop("checked", Boolean(profile?.thrusterColor));
-            html.find('[data-ship-color-fields]').toggle(Boolean(profile?.thrusterColor));
             html.find('[name="shipThrusterColor"]').val(color);
             html.find('[data-color-text="shipThrusterColor"]').val(color);
         });
@@ -109,7 +102,6 @@ class FullSpeedAheadEffectsConfig extends FormApplication {
         const updates = {
             enableMovementSound: Boolean(formData.enableMovementSound),
             enableThrusterEffect: Boolean(formData.enableThrusterEffect),
-            thrusterColor: String(formData.thrusterColor ?? "#40c7ff").trim(),
             thrusterLength: Number(formData.thrusterLength),
             thrusterWidth: Number(formData.thrusterWidth)
         };
@@ -134,13 +126,9 @@ class FullSpeedAheadEffectsConfig extends FormApplication {
             movementSoundPath: String(formData.movementSoundPath ?? "").trim(),
             movementSoundVolume: clampNumber(Number(formData.movementSoundVolume), 0, 1, game.settings.get(MODULE_ID, "movementSoundVolume"))
         };
-
-        if (formData.useShipThrusterColor) {
-            const shipColor = String(formData.shipThrusterColor ?? updates.thrusterColor).trim();
-            profile.thrusterColor = /^#[0-9a-f]{6}$/i.test(shipColor) ? shipColor : updates.thrusterColor;
-        } else {
-            delete profile.thrusterColor;
-        }
+        const fallbackColor = game.settings.get(MODULE_ID, "thrusterColor") || DEFAULT_THRUSTER_COLOR;
+        const shipColor = String(formData.shipThrusterColor ?? fallbackColor).trim();
+        profile.thrusterColor = /^#[0-9a-f]{6}$/i.test(shipColor) ? shipColor : fallbackColor;
 
         profiles[profileKey] = profile;
         await game.settings.set(MODULE_ID, SHIP_PROFILES_SETTING, profiles);
@@ -267,7 +255,7 @@ Hooks.once("init", () => {
         name: "Thruster Color",
         hint: "Hex color used for the movement thrust trail.",
         type: String,
-        default: "#40c7ff",
+        default: DEFAULT_THRUSTER_COLOR,
         config: false
     });
 
@@ -633,9 +621,9 @@ function createUnderTokenThruster(token) {
     graphics.interactive = false;
     graphics.zIndex = getTokenSortValue(token) - 1;
 
-    const layer = canvas.primary ?? canvas.tokens;
+    const layer = canvas.tokens;
     layer.sortableChildren = true;
-    layer.addChildAt(graphics, 0);
+    layer.addChild(graphics);
     return graphics;
 }
 

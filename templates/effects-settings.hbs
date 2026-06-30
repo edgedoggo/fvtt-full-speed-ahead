@@ -31,14 +31,6 @@
         <p class="notes">Show a faded thrust cone underneath moving vehicle tokens.</p>
     </div>
 
-    <div class="form-group">
-        <label>Default Thruster Color</label>
-        <div class="form-fields">
-            <input type="color" name="thrusterColor" value="{{thrusterColor}}" data-color-picker="thrusterColor">
-            <input type="text" data-color-text="thrusterColor" value="{{thrusterColor}}">
-        </div>
-    </div>
-
     {{#if hasShipProfiles}}
     <hr>
 
@@ -52,16 +44,10 @@
             </select>
         </div>
         <p class="notes">Profiles are matched by ship name. Every vehicle with the same name uses the same profile.</p>
-        <p class="notes">The sound file, sound volume, and custom exhaust color are saved to the selected profile.</p>
+        <p class="notes">The sound file, sound volume, and exhaust color are saved to the selected profile.</p>
     </div>
 
     <div class="form-group">
-        <label>Custom Ship Exhaust</label>
-        <input type="checkbox" name="useShipThrusterColor" {{checked useShipThrusterColor}}>
-        <p class="notes">Use a custom exhaust color for this ship name.</p>
-    </div>
-
-    <div class="form-group" data-ship-color-fields style="{{#unless useShipThrusterColor}}display: none;{{/unless}}">
         <label>Ship Exhaust Color</label>
         <div class="form-fields">
             <input type="color" name="shipThrusterColor" value="{{shipThrusterColor}}" data-color-picker="shipThrusterColor">
