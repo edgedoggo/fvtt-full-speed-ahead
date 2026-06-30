@@ -176,9 +176,9 @@ Hooks.once("init", () => {
 
     game.settings.registerMenu(MODULE_ID, "effectsConfig", {
         name: "Movement Effects",
-        label: "Configure Effects",
-        hint: "Configure movement sound, sound browsing, thruster color, and thruster shape.",
-        icon: "fas fa-fire",
+        label: "Open Effects Gear",
+        hint: "Open the same movement effects panel used by the vehicle token HUD gear.",
+        icon: "fas fa-cog",
         type: FullSpeedAheadEffectsConfig,
         restricted: true
     });
@@ -367,7 +367,7 @@ Hooks.on("renderTokenHUD", (app, html, data) => {
     if (html.find(".full-speed-ahead-effects").length) return;
 
     const button = $(`
-        <div class="control-icon full-speed-ahead-effects" title="Full Speed Ahead Effects">
+        <div class="control-icon full-speed-ahead-effects" title="Full Speed Ahead Movement Effects">
             <i class="fas fa-cog"></i>
         </div>
     `);
