@@ -28,7 +28,7 @@
     <div class="form-group">
         <label>Thruster Effect</label>
         <input type="checkbox" name="enableThrusterEffect" {{checked enableThrusterEffect}}>
-        <p class="notes">Show a faded thrust cone underneath moving vehicle tokens.</p>
+        <p class="notes">Show a faded thrust cone underneath moving vehicle tokens. Preview is always shown while tuning.</p>
     </div>
 
     {{#if hasShipProfiles}}
@@ -58,6 +58,14 @@
         </div>
     </div>
     {{/if}}
+
+    <div class="form-group">
+        <label>Global Scale</label>
+        <div class="form-fields">
+            <input type="range" name="thrusterScale" value="{{thrusterScale}}" min="-10" max="10" step="0.5" data-sync-range="thrusterScale">
+            <input type="number" value="{{thrusterScale}}" min="-10" max="10" step="0.5" data-sync-number="thrusterScale">
+        </div>
+    </div>
 
     <div class="form-group">
         <label>Thruster Length</label>

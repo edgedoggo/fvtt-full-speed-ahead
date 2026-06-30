@@ -42,6 +42,7 @@ class FullSpeedAheadEffectsConfig extends FormApplication {
             movementSoundPath: movementSound.src,
             movementSoundVolume: movementSound.volume,
             enableThrusterEffect: game.settings.get(MODULE_ID, "enableThrusterEffect"),
+            thrusterScale: dimensions.scale,
             thrusterLength: dimensions.length,
             thrusterWidth: dimensions.width,
             coneCount: dimensions.coneCount,
@@ -109,6 +110,8 @@ class FullSpeedAheadEffectsConfig extends FormApplication {
             html.find('[name="movementSoundPath"]').val(movementSound.src);
             html.find('[name="movementSoundVolume"]').val(movementSound.volume);
             html.find('[data-sync-number="movementSoundVolume"]').val(movementSound.volume);
+            html.find('[name="thrusterScale"]').val(dimensions.scale);
+            html.find('[data-sync-number="thrusterScale"]').val(dimensions.scale);
             html.find('[name="thrusterLength"]').val(dimensions.length);
             html.find('[data-sync-number="thrusterLength"]').val(dimensions.length);
             html.find('[name="thrusterWidth"]').val(dimensions.width);
@@ -136,6 +139,7 @@ class FullSpeedAheadEffectsConfig extends FormApplication {
 
     getThrusterConfigFromForm(html) {
         const fallbackColor = getThrusterColorForTokenDocument(this.tokenDocument);
+        const scale = clampNumber(Number(html.find("[name='thrusterScale']").val()), -10, 10, 0);
         const baseLength = clampNumber(Number(html.find("[name='thrusterLength']").val()), 0.25, 12, getSettingNumber("thrusterLength", 1.25));
         const baseWidth = clampNumber(Number(html.find("[name='thrusterWidth']").val()), 0.1, 6, getSettingNumber("thrusterWidth", 0.55));
         const baseColor = normalizeHexColor(html.find("[name='shipThrusterColor']").val(), fallbackColor);
@@ -153,7 +157,7 @@ class FullSpeedAheadEffectsConfig extends FormApplication {
             width: baseWidth
         };
 
-        return { length: baseLength, width: baseWidth, color: baseColor, coneCount, coneSpacing, cones };
+        return { scale, length: baseLength, width: baseWidth, color: baseColor, coneCount, coneSpacing, cones };
     }
 
     previewFromForm(html) {
@@ -180,6 +184,7 @@ class FullSpeedAheadEffectsConfig extends FormApplication {
         if (!profileName) {
             await game.settings.set(MODULE_ID, "movementSoundPath", String(formData.movementSoundPath ?? "").trim());
             await game.settings.set(MODULE_ID, "movementSoundVolume", clampNumber(Number(formData.movementSoundVolume), 0, 1, game.settings.get(MODULE_ID, "movementSoundVolume")));
+            await game.settings.set(MODULE_ID, "thrusterScale", clampNumber(Number(formData.thrusterScale), -10, 10, 0));
             await game.settings.set(MODULE_ID, "thrusterLength", Number(formData.thrusterLength));
             await game.settings.set(MODULE_ID, "thrusterWidth", Number(formData.thrusterWidth));
             clearThrusterPreview();
@@ -332,6 +337,15 @@ Hooks.once("init", () => {
         hint: "Hex color used for the movement thrust trail.",
         type: String,
         default: DEFAULT_THRUSTER_COLOR,
+        config: false
+    });
+
+    registerSetting("thrusterScale", {
+        name: "Thruster Global Scale",
+        hint: "Global multiplier applied to the movement thrust trail.",
+        type: Number,
+        default: 0,
+        range: { min: -10, max: 10, step: 0.5 },
         config: false
     });
 
@@ -564,6 +578,11 @@ function normalizeHexColor(value, fallback = DEFAULT_THRUSTER_COLOR) {
     return /^#[0-9a-f]{6}$/i.test(color) ? color : fallback;
 }
 
+function getThrusterScaleFactor(scale) {
+    const normalized = clampNumber(Number(scale), -10, 10, 0);
+    return normalized >= 0 ? 1 + normalized / 2 : 1 / (1 + Math.abs(normalized) / 2);
+}
+
 function playMovementSound(tokenDocument, userId) {
     if (!game.settings.get(MODULE_ID, "enableMovementSound")) return;
     if (userId && game.user.id !== userId) return;
@@ -610,9 +629,12 @@ function startVehicleMotionEffects(tokenDocument, options) {
 
     stopVehicleMotionEffects(tokenDocument.id);
 
+    const thruster = game.settings.get(MODULE_ID, "enableThrusterEffect") ? createUnderTokenThruster(token) : null;
+    if (thruster) thruster.alpha = 0;
+
     const controller = {
         destroyed: false,
-        thruster: game.settings.get(MODULE_ID, "enableThrusterEffect") ? createUnderTokenThruster(token) : null,
+        thruster,
         lastRotationUpdate: 0,
         currentRotation: motion.startRotation
     };
@@ -628,6 +650,9 @@ function startVehicleMotionEffects(tokenDocument, options) {
             updateSmoothRotation(tokenDocument, motion, progress, controller);
         } else {
             controller.currentRotation = motion.targetRotation;
+        }
+        if (controller.thruster && !controller.thruster.destroyed) {
+            controller.thruster.alpha = Math.min(0.85, 0.85 * ((performance.now() - startTime) / 180));
         }
         drawThrusterCone(controller.thruster, token, controller.currentRotation);
 
@@ -747,9 +772,10 @@ function drawThrusterCone(graphics, token, rotation, dimensions = null) {
     graphics.zIndex = getTokenSortValue(token) - 1;
 
     const coneCount = Math.max(1, Math.min(3, resolvedDimensions.coneCount));
+    const scaleFactor = getThrusterScaleFactor(resolvedDimensions.scale);
     for (let coneIndex = 0; coneIndex < coneCount; coneIndex++) {
         const cone = resolvedDimensions.cones[coneIndex] ?? resolvedDimensions.cones[0];
-        const offset = (coneIndex - (coneCount - 1) / 2) * resolvedDimensions.coneSpacing * canvas.grid.size;
+        const offset = (coneIndex - (coneCount - 1) / 2) * resolvedDimensions.coneSpacing * scaleFactor * canvas.grid.size;
         drawSingleThrusterCone(graphics, {
             rearX: rearX + sideX * offset,
             rearY: rearY + sideY * offset,
@@ -757,8 +783,8 @@ function drawThrusterCone(graphics, token, rotation, dimensions = null) {
             forwardY,
             sideX,
             sideY,
-            length: cone.length * canvas.grid.size,
-            width: cone.width * canvas.grid.size,
+            length: cone.length * scaleFactor * canvas.grid.size,
+            width: cone.width * scaleFactor * canvas.grid.size,
             color: hexToNumber(cone.color, 0x40c7ff)
         });
     }
@@ -835,6 +861,7 @@ function getThrusterDimensionsForProfile(sceneId, shipName) {
 }
 
 function normalizeThrusterConfig(config, fallbackColor = DEFAULT_THRUSTER_COLOR) {
+    const scale = clampNumber(Number(config?.scale), -10, 10, getSettingNumber("thrusterScale", 0));
     const length = clampNumber(Number(config?.length), 0.25, 12, getSettingNumber("thrusterLength", 1.25));
     const width = clampNumber(Number(config?.width), 0.1, 6, getSettingNumber("thrusterWidth", 0.55));
     const color = normalizeHexColor(config?.color, fallbackColor);
@@ -852,7 +879,7 @@ function normalizeThrusterConfig(config, fallbackColor = DEFAULT_THRUSTER_COLOR)
 
     cones[0] = { color, length, width };
 
-    return { length, width, color, coneCount, coneSpacing, cones };
+    return { scale, length, width, color, coneCount, coneSpacing, cones };
 }
 
 function getSceneThrusterProfiles() {
