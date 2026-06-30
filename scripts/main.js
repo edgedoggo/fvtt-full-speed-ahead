@@ -4,6 +4,7 @@ const MODULE_ID = "full-speed-ahead";
 const INTERNAL_MOVE = "fullSpeedAheadInternalMove";
 const LOG_PREFIX = "[Full Speed Ahead]";
 const THRUSTER_COLOR_FLAG = "thrusterColor";
+const SHIP_PROFILE_FLAG = "shipProfileName";
 const SHIP_PROFILES_SETTING = "shipProfiles";
 const SCENE_THRUSTER_PROFILES_SETTING = "sceneThrusterProfiles";
 const DEFAULT_MOVEMENT_SOUND_PATH = "modules/full-speed-ahead/sounds/lockon.ogg";
@@ -47,6 +48,8 @@ class FullSpeedAheadEffectsConfig extends FormApplication {
             coneSpacing: dimensions.coneSpacing,
             cones: dimensions.cones.map((cone, index) => ({ ...cone, number: index + 1 })),
             shipName: focusedShipName,
+            tokenName: tokenDocument ? getDefaultShipProfileName(tokenDocument) : "",
+            profileAssigned: tokenDocument ? getAssignedShipProfileName(tokenDocument) === focusedShipName : false,
             shipOptions: shipNames.map(name => ({ name, selected: name === focusedShipName })),
             hasShipProfiles: shipNames.length > 0 || Boolean(focusedShipName),
             isTokenConfig: Boolean(tokenDocument),
@@ -197,6 +200,7 @@ class FullSpeedAheadEffectsConfig extends FormApplication {
 
         profiles[profileKey] = profile;
         await game.settings.set(MODULE_ID, SHIP_PROFILES_SETTING, profiles);
+        await setAssignedShipProfileName(tokenDocument, profileName);
         await setSceneThrusterDimensionsForProfile(canvas.scene?.id, profileName, this.getThrusterConfigFromForm($(event.currentTarget)));
         clearThrusterPreview();
     }
@@ -924,7 +928,28 @@ function normalizeShipProfileName(shipName) {
 }
 
 function getShipProfileName(tokenDocument) {
+    return getAssignedShipProfileName(tokenDocument) || getDefaultShipProfileName(tokenDocument);
+}
+
+function getDefaultShipProfileName(tokenDocument) {
     return String(tokenDocument?.name || tokenDocument?.actor?.name || "").trim();
+}
+
+function getAssignedShipProfileName(tokenDocument) {
+    return String(tokenDocument?.getFlag?.(MODULE_ID, SHIP_PROFILE_FLAG) ?? "").trim();
+}
+
+async function setAssignedShipProfileName(tokenDocument, profileName) {
+    if (!tokenDocument) return;
+
+    const selectedProfile = String(profileName ?? "").trim();
+    const defaultProfile = getDefaultShipProfileName(tokenDocument);
+    if (!selectedProfile || normalizeShipProfileName(selectedProfile) === normalizeShipProfileName(defaultProfile)) {
+        if (getAssignedShipProfileName(tokenDocument)) await tokenDocument.unsetFlag(MODULE_ID, SHIP_PROFILE_FLAG);
+        return;
+    }
+
+    await tokenDocument.setFlag(MODULE_ID, SHIP_PROFILE_FLAG, selectedProfile);
 }
 
 function collectVehicleShipNames() {
@@ -935,7 +960,10 @@ function collectVehicleShipNames() {
     }
 
     for (const token of canvas?.tokens?.placeables ?? []) {
-        if (token.actor?.type === "vehicle") names.add(getShipProfileName(token.document));
+        if (token.actor?.type === "vehicle") {
+            names.add(getDefaultShipProfileName(token.document));
+            names.add(getShipProfileName(token.document));
+        }
     }
 
     for (const profile of Object.values(getShipProfiles())) {

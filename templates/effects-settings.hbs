@@ -44,6 +44,9 @@
             </select>
         </div>
         <p class="notes">Profiles are matched by ship name. Every vehicle with the same name uses the same profile.</p>
+        {{#if isTokenConfig}}
+        <p class="notes">This token is named {{tokenName}}. Saving a different profile makes this token use that profile.</p>
+        {{/if}}
         <p class="notes">The sound file, sound volume, and exhaust color are saved to the selected profile.</p>
     </div>
 
