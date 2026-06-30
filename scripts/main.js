@@ -721,15 +721,15 @@ function createUnderTokenThruster(token) {
     graphics.eventMode = "none";
     graphics.interactive = false;
     graphics.zIndex = getTokenSortValue(token) - 1;
-    graphics.fullSpeedAheadTokenId = token.id;
 
-    placeThrusterUnderToken(graphics, token);
+    const layer = canvas.tokens;
+    layer.sortableChildren = true;
+    layer.addChild(graphics);
     return graphics;
 }
 
 function drawThrusterCone(graphics, token, rotation, dimensions = null) {
     if (!graphics || graphics.destroyed) return;
-    placeThrusterUnderToken(graphics, token);
 
     const resolvedDimensions = normalizeThrusterConfig(dimensions ?? getThrusterDimensions(token.document), getThrusterColor(token));
     const centerX = token.x + token.w / 2;
@@ -793,29 +793,6 @@ function drawSingleThrusterCone(graphics, cone) {
 
 function getTokenSortValue(token) {
     return Number.isFinite(token.mesh?.zIndex) ? token.mesh.zIndex : Number.isFinite(token.zIndex) ? token.zIndex : 0;
-}
-
-function placeThrusterUnderToken(graphics, token) {
-    const parent = token?.parent ?? canvas.tokens;
-    if (!parent || !graphics) return;
-
-    parent.sortableChildren = true;
-    graphics.zIndex = getTokenSortValue(token) - 1;
-    if (Number.isFinite(token.zIndex) && token.zIndex <= graphics.zIndex) token.zIndex = graphics.zIndex + 1;
-
-    if (graphics.parent !== parent) {
-        if (graphics.parent) graphics.parent.removeChild(graphics);
-        const tokenIndex = parent.children.indexOf(token);
-        if (tokenIndex >= 0) parent.addChildAt(graphics, tokenIndex);
-        else parent.addChild(graphics);
-        return;
-    }
-
-    const tokenIndex = parent.children.indexOf(token);
-    const graphicsIndex = parent.children.indexOf(graphics);
-    if (tokenIndex > 0 && graphicsIndex > tokenIndex) {
-        parent.setChildIndex(graphics, tokenIndex - 1);
-    }
 }
 
 function getThrusterColor(token) {
@@ -921,7 +898,7 @@ async function clearSceneThrusterDimensions(tokenDocument) {
 }
 
 function showThrusterPreview(token, dimensions) {
-    if (!activeThrusterPreview || activeThrusterPreview.destroyed) {
+    if (!activeThrusterPreview || activeThrusterPreview.destroyed || !activeThrusterPreview.parent) {
         activeThrusterPreview = createUnderTokenThruster(token);
     }
 
