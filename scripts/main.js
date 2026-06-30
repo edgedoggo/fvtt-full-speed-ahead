@@ -43,6 +43,7 @@ class FullSpeedAheadEffectsConfig extends FormApplication {
             movementSoundVolume: movementSound.volume,
             enableThrusterEffect: game.settings.get(MODULE_ID, "enableThrusterEffect"),
             thrusterScale: dimensions.scale,
+            thrusterPosition: dimensions.position,
             thrusterLength: dimensions.length,
             thrusterWidth: dimensions.width,
             thrusterInverted: dimensions.cones[0]?.inverted,
@@ -114,6 +115,8 @@ class FullSpeedAheadEffectsConfig extends FormApplication {
             html.find('[data-sync-number="movementSoundVolume"]').val(movementSound.volume);
             html.find('[name="thrusterScale"]').val(dimensions.scale);
             html.find('[data-sync-number="thrusterScale"]').val(dimensions.scale);
+            html.find('[name="thrusterPosition"]').val(dimensions.position);
+            html.find('[data-sync-number="thrusterPosition"]').val(dimensions.position);
             html.find('[name="thrusterLength"]').val(dimensions.length);
             html.find('[data-sync-number="thrusterLength"]').val(dimensions.length);
             html.find('[name="thrusterWidth"]').val(dimensions.width);
@@ -144,6 +147,7 @@ class FullSpeedAheadEffectsConfig extends FormApplication {
     getThrusterConfigFromForm(html) {
         const fallbackColor = getThrusterColorForTokenDocument(this.tokenDocument);
         const scale = clampNumber(Number(html.find("[name='thrusterScale']").val()), -10, 10, 0);
+        const position = clampNumber(Number(html.find("[name='thrusterPosition']").val()), -6, 6, 0);
         const baseLength = clampNumber(Number(html.find("[name='thrusterLength']").val()), 0.25, 12, getSettingNumber("thrusterLength", 1.25));
         const baseWidth = clampNumber(Number(html.find("[name='thrusterWidth']").val()), 0.1, 6, getSettingNumber("thrusterWidth", 0.55));
         const baseColor = normalizeHexColor(html.find("[name='shipThrusterColor']").val(), fallbackColor);
@@ -166,7 +170,7 @@ class FullSpeedAheadEffectsConfig extends FormApplication {
             });
         }
 
-        return { scale, length: baseLength, width: baseWidth, color: baseColor, coneCount, coneSpacing, cones };
+        return { scale, position, length: baseLength, width: baseWidth, color: baseColor, coneCount, coneSpacing, cones };
     }
 
     previewFromForm(html) {
@@ -773,7 +777,8 @@ function drawThrusterCone(graphics, token, rotation, dimensions = null) {
     const forwardY = -Math.cos(radians);
     const sideX = -forwardY;
     const sideY = forwardX;
-    const rearDistance = Math.min(token.w, token.h) * 0.48;
+    const scaleFactor = getThrusterScaleFactor(resolvedDimensions.scale);
+    const rearDistance = Math.max(0, Math.min(token.w, token.h) * 0.48 + resolvedDimensions.position * scaleFactor * canvas.grid.size);
     const rearX = centerX - forwardX * rearDistance;
     const rearY = centerY - forwardY * rearDistance;
 
@@ -781,7 +786,6 @@ function drawThrusterCone(graphics, token, rotation, dimensions = null) {
     graphics.zIndex = getTokenSortValue(token) - 1;
 
     const coneCount = Math.max(1, Math.min(3, resolvedDimensions.coneCount));
-    const scaleFactor = getThrusterScaleFactor(resolvedDimensions.scale);
     for (let coneIndex = 0; coneIndex < coneCount; coneIndex++) {
         const cone = resolvedDimensions.cones[coneIndex] ?? resolvedDimensions.cones[0];
         const offset = (coneIndex - (coneCount - 1) / 2) * resolvedDimensions.coneSpacing * scaleFactor * canvas.grid.size;
@@ -872,6 +876,7 @@ function getThrusterDimensionsForProfile(sceneId, shipName) {
 
 function normalizeThrusterConfig(config, fallbackColor = DEFAULT_THRUSTER_COLOR) {
     const scale = clampNumber(Number(config?.scale), -10, 10, getSettingNumber("thrusterScale", 0));
+    const position = clampNumber(Number(config?.position), -6, 6, 0);
     const length = clampNumber(Number(config?.length), 0.25, 12, getSettingNumber("thrusterLength", 1.25));
     const width = clampNumber(Number(config?.width), 0.1, 6, getSettingNumber("thrusterWidth", 0.55));
     const color = normalizeHexColor(config?.color, fallbackColor);
@@ -890,7 +895,7 @@ function normalizeThrusterConfig(config, fallbackColor = DEFAULT_THRUSTER_COLOR)
 
     cones[0] = { ...cones[0], color, length, width };
 
-    return { scale, length, width, color, coneCount, coneSpacing, cones };
+    return { scale, position, length, width, color, coneCount, coneSpacing, cones };
 }
 
 function getSceneThrusterProfiles() {
