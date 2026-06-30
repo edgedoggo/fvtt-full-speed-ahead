@@ -5,10 +5,101 @@ const INTERNAL_MOVE = "fullSpeedAheadInternalMove";
 const LOG_PREFIX = "[Full Speed Ahead]";
 const THRUSTER_COLOR_FLAG = "thrusterColor";
 const SHIP_PROFILES_SETTING = "shipProfiles";
+const SCENE_THRUSTER_PROFILES_SETTING = "sceneThrusterProfiles";
 const DEFAULT_MOVEMENT_SOUND_PATH = "modules/full-speed-ahead/sounds/lockon.ogg";
 const DEFAULT_THRUSTER_COLOR = "#40c7ff";
 const lastTokenPositions = new Map();
 const activeMotionEffects = new Map();
+let activeThrusterPreview = null;
+
+class FullSpeedAheadThrusterConfig extends FormApplication {
+    static get defaultOptions() {
+        return foundry.utils.mergeObject(super.defaultOptions, {
+            id: "full-speed-ahead-thruster-config",
+            title: "Full Speed Ahead: Thruster Tuning",
+            template: `modules/${MODULE_ID}/templates/thruster-settings.hbs`,
+            width: 360,
+            closeOnSubmit: false
+        });
+    }
+
+    get tokenDocument() {
+        return this.object?.documentName === "Token" ? this.object : null;
+    }
+
+    getData() {
+        const tokenDocument = this.tokenDocument;
+        const dimensions = getThrusterDimensions(tokenDocument);
+
+        return {
+            shipName: getShipProfileName(tokenDocument),
+            sceneName: canvas.scene?.name ?? "",
+            thrusterLength: dimensions.length,
+            thrusterWidth: dimensions.width
+        };
+    }
+
+    activateListeners(html) {
+        super.activateListeners(html);
+
+        html.find("[data-sync-range]").on("input", event => {
+            const key = event.currentTarget.dataset.syncRange;
+            html.find(`[data-sync-number="${key}"]`).val(event.currentTarget.value);
+            this.previewFromForm(html);
+        });
+        html.find("[data-sync-range]").on("change", () => this.saveFromForm(html));
+
+        html.find("[data-sync-number]").on("input change", event => {
+            const key = event.currentTarget.dataset.syncNumber;
+            html.find(`[data-sync-range="${key}"]`).val(event.currentTarget.value);
+            this.previewFromForm(html);
+        });
+        html.find("[data-sync-number]").on("change", () => this.saveFromForm(html));
+
+        html.find("[data-action='reset-thruster-scene']").on("click", async event => {
+            event.preventDefault();
+            await clearSceneThrusterDimensions(this.tokenDocument);
+            this.close();
+        });
+
+        this.previewFromForm(html);
+    }
+
+    getDimensionsFromForm(html) {
+        return {
+            length: clampNumber(Number(html.find("[name='thrusterLength']").val()), 0.25, 12, game.settings.get(MODULE_ID, "thrusterLength")),
+            width: clampNumber(Number(html.find("[name='thrusterWidth']").val()), 0.1, 6, game.settings.get(MODULE_ID, "thrusterWidth"))
+        };
+    }
+
+    previewFromForm(html) {
+        const tokenDocument = this.tokenDocument;
+        const token = canvas.tokens?.get(tokenDocument?.id);
+        if (!token) return;
+
+        const dimensions = this.getDimensionsFromForm(html);
+        const rotation = normalizeDegrees(tokenDocument.rotation ?? token.rotation ?? 0);
+        showThrusterPreview(token, { ...dimensions, rotation });
+    }
+
+    saveFromForm(html) {
+        setSceneThrusterDimensions(this.tokenDocument, this.getDimensionsFromForm(html))
+            .catch(error => console.warn(`${LOG_PREFIX} Could not save thruster tuning.`, error));
+    }
+
+    async _updateObject(event, formData) {
+        await setSceneThrusterDimensions(this.tokenDocument, {
+            length: Number(formData.thrusterLength),
+            width: Number(formData.thrusterWidth)
+        });
+        clearThrusterPreview();
+    }
+
+    async close(options) {
+        clearThrusterPreview();
+        return super.close(options);
+    }
+}
 
 class FullSpeedAheadEffectsConfig extends FormApplication {
     static get defaultOptions() {
@@ -32,14 +123,15 @@ class FullSpeedAheadEffectsConfig extends FormApplication {
         const focusedProfile = getShipProfile(focusedShipName);
         const fallbackColor = game.settings.get(MODULE_ID, "thrusterColor") || DEFAULT_THRUSTER_COLOR;
         const movementSound = getMovementSoundOptions(tokenDocument, focusedProfile);
+        const dimensions = getThrusterDimensions(tokenDocument);
 
         return {
             enableMovementSound: game.settings.get(MODULE_ID, "enableMovementSound"),
             movementSoundPath: movementSound.src,
             movementSoundVolume: movementSound.volume,
             enableThrusterEffect: game.settings.get(MODULE_ID, "enableThrusterEffect"),
-            thrusterLength: game.settings.get(MODULE_ID, "thrusterLength"),
-            thrusterWidth: game.settings.get(MODULE_ID, "thrusterWidth"),
+            thrusterLength: dimensions.length,
+            thrusterWidth: dimensions.width,
             shipName: focusedShipName,
             shipOptions: shipNames.map(name => ({ name, selected: name === focusedShipName })),
             hasShipProfiles: shipNames.length > 0 || Boolean(focusedShipName),
@@ -89,32 +181,37 @@ class FullSpeedAheadEffectsConfig extends FormApplication {
             const profile = getShipProfile(profileName);
             const fallbackColor = game.settings.get(MODULE_ID, "thrusterColor") || DEFAULT_THRUSTER_COLOR;
             const movementSound = getMovementSoundOptions(null, profile);
+            const dimensions = getThrusterDimensionsForProfile(canvas.scene?.id, profileName);
             const color = profile?.thrusterColor ?? fallbackColor;
             html.find('[name="movementSoundPath"]').val(movementSound.src);
             html.find('[name="movementSoundVolume"]').val(movementSound.volume);
             html.find('[data-sync-number="movementSoundVolume"]').val(movementSound.volume);
+            html.find('[name="thrusterLength"]').val(dimensions.length);
+            html.find('[data-sync-number="thrusterLength"]').val(dimensions.length);
+            html.find('[name="thrusterWidth"]').val(dimensions.width);
+            html.find('[data-sync-number="thrusterWidth"]').val(dimensions.width);
             html.find('[name="shipThrusterColor"]').val(color);
             html.find('[data-color-text="shipThrusterColor"]').val(color);
         });
     }
 
     async _updateObject(event, formData) {
+        const tokenDocument = this.tokenDocument;
         const updates = {
             enableMovementSound: Boolean(formData.enableMovementSound),
-            enableThrusterEffect: Boolean(formData.enableThrusterEffect),
-            thrusterLength: Number(formData.thrusterLength),
-            thrusterWidth: Number(formData.thrusterWidth)
+            enableThrusterEffect: Boolean(formData.enableThrusterEffect)
         };
 
         for (const [key, value] of Object.entries(updates)) {
             await game.settings.set(MODULE_ID, key, value);
         }
 
-        const tokenDocument = this.tokenDocument;
         const profileName = String(formData.shipProfileName ?? (tokenDocument ? getShipProfileName(tokenDocument) : "")).trim();
         if (!profileName) {
             await game.settings.set(MODULE_ID, "movementSoundPath", String(formData.movementSoundPath ?? "").trim());
             await game.settings.set(MODULE_ID, "movementSoundVolume", clampNumber(Number(formData.movementSoundVolume), 0, 1, game.settings.get(MODULE_ID, "movementSoundVolume")));
+            await game.settings.set(MODULE_ID, "thrusterLength", Number(formData.thrusterLength));
+            await game.settings.set(MODULE_ID, "thrusterWidth", Number(formData.thrusterWidth));
             return;
         }
 
@@ -132,6 +229,10 @@ class FullSpeedAheadEffectsConfig extends FormApplication {
 
         profiles[profileKey] = profile;
         await game.settings.set(MODULE_ID, SHIP_PROFILES_SETTING, profiles);
+        await setSceneThrusterDimensionsForProfile(canvas.scene?.id, profileName, {
+            length: Number(formData.thrusterLength),
+            width: Number(formData.thrusterWidth)
+        });
     }
 }
 
@@ -285,6 +386,14 @@ Hooks.once("init", () => {
         config: false
     });
 
+    registerSetting(SCENE_THRUSTER_PROFILES_SETTING, {
+        name: "Scene Ship Thruster Profiles",
+        hint: "Scene and ship name keyed thruster dimensions used by Full Speed Ahead.",
+        type: Object,
+        default: {},
+        config: false
+    });
+
     registerSetting("renameCreatureCapacity", {
         name: "Change Creature Capacity Label",
         hint: "On Tidy5e vehicle sheets, change the Creature Capacity label to Module Capacity.",
@@ -354,26 +463,43 @@ Hooks.on("renderTokenHUD", (app, html, data) => {
     if (token?.actor?.type !== "vehicle") return;
     if (html.find(".full-speed-ahead-effects").length) return;
 
-    const button = $(`
+    const effectsButton = $(`
         <div class="control-icon full-speed-ahead-effects" title="Full Speed Ahead Movement Effects">
             <i class="fas fa-cog"></i>
         </div>
     `);
-    button.css({
+    effectsButton.css({
         background: "rgba(30, 105, 220, 0.82)",
         border: "1px solid rgba(125, 190, 255, 0.95)",
         color: "#ffffff",
         boxShadow: "0 0 10px rgba(80, 170, 255, 0.65)"
     });
-    button.on("click", event => {
+    effectsButton.on("click", event => {
         event.preventDefault();
         event.stopPropagation();
         new FullSpeedAheadEffectsConfig(token.document).render(true);
     });
 
+    const thrusterButton = $(`
+        <div class="control-icon full-speed-ahead-thruster" title="Tune Full Speed Ahead Thruster Size">
+            <i class="fas fa-fire"></i>
+        </div>
+    `);
+    thrusterButton.css({
+        background: "rgba(210, 88, 20, 0.86)",
+        border: "1px solid rgba(255, 190, 110, 0.95)",
+        color: "#ffffff",
+        boxShadow: "0 0 10px rgba(255, 135, 45, 0.65)"
+    });
+    thrusterButton.on("click", event => {
+        event.preventDefault();
+        event.stopPropagation();
+        new FullSpeedAheadThrusterConfig(token.document).render(true);
+    });
+
     const leftColumn = html.find(".col.left");
-    if (leftColumn.length) leftColumn.append(button);
-    else html.append(button);
+    if (leftColumn.length) leftColumn.append(effectsButton, thrusterButton);
+    else html.append(effectsButton, thrusterButton);
 });
 
 function registerSetting(key, data) {
@@ -627,11 +753,12 @@ function createUnderTokenThruster(token) {
     return graphics;
 }
 
-function drawThrusterCone(graphics, token, rotation) {
+function drawThrusterCone(graphics, token, rotation, dimensions = null) {
     if (!graphics || graphics.destroyed) return;
 
-    const length = getSettingNumber("thrusterLength", 1.25) * canvas.grid.size;
-    const width = getSettingNumber("thrusterWidth", 0.55) * canvas.grid.size;
+    const resolvedDimensions = dimensions ?? getThrusterDimensions(token.document);
+    const length = resolvedDimensions.length * canvas.grid.size;
+    const width = resolvedDimensions.width * canvas.grid.size;
     const color = hexToNumber(getThrusterColor(token), 0x40c7ff);
     const centerX = token.x + token.w / 2;
     const centerY = token.y + token.h / 2;
@@ -679,6 +806,76 @@ function getTokenSortValue(token) {
 function getThrusterColor(token) {
     const profile = getShipProfile(getShipProfileName(token.document));
     return profile?.thrusterColor ?? token.document?.getFlag(MODULE_ID, THRUSTER_COLOR_FLAG) ?? game.settings.get(MODULE_ID, "thrusterColor");
+}
+
+function getThrusterDimensions(tokenDocument) {
+    return getThrusterDimensionsForProfile(canvas.scene?.id, getShipProfileName(tokenDocument));
+}
+
+function getThrusterDimensionsForProfile(sceneId, shipName) {
+    const sceneProfile = getSceneThrusterProfile(sceneId, shipName);
+    return {
+        length: clampNumber(Number(sceneProfile?.length), 0.25, 12, getSettingNumber("thrusterLength", 1.25)),
+        width: clampNumber(Number(sceneProfile?.width), 0.1, 6, getSettingNumber("thrusterWidth", 0.55))
+    };
+}
+
+function getSceneThrusterProfiles() {
+    return foundry.utils.deepClone(game.settings.get(MODULE_ID, SCENE_THRUSTER_PROFILES_SETTING) ?? {});
+}
+
+function getSceneThrusterProfile(sceneId, shipName) {
+    return getSceneThrusterProfiles()[getSceneThrusterProfileKey(sceneId, shipName)];
+}
+
+function getSceneThrusterProfileKey(sceneId, shipName) {
+    return `${sceneId || "global"}:${normalizeShipProfileName(shipName)}`;
+}
+
+async function setSceneThrusterDimensions(tokenDocument, dimensions) {
+    return setSceneThrusterDimensionsForProfile(canvas.scene?.id, getShipProfileName(tokenDocument), dimensions);
+}
+
+async function setSceneThrusterDimensionsForProfile(sceneId, shipName, dimensions) {
+    const profileName = String(shipName ?? "").trim();
+    if (!profileName) {
+        await game.settings.set(MODULE_ID, "thrusterLength", clampNumber(Number(dimensions.length), 0.25, 12, getSettingNumber("thrusterLength", 1.25)));
+        await game.settings.set(MODULE_ID, "thrusterWidth", clampNumber(Number(dimensions.width), 0.1, 6, getSettingNumber("thrusterWidth", 0.55)));
+        return;
+    }
+
+    const profiles = getSceneThrusterProfiles();
+    profiles[getSceneThrusterProfileKey(sceneId, profileName)] = {
+        sceneId: sceneId || "global",
+        name: profileName,
+        length: clampNumber(Number(dimensions.length), 0.25, 12, getSettingNumber("thrusterLength", 1.25)),
+        width: clampNumber(Number(dimensions.width), 0.1, 6, getSettingNumber("thrusterWidth", 0.55))
+    };
+    await game.settings.set(MODULE_ID, SCENE_THRUSTER_PROFILES_SETTING, profiles);
+}
+
+async function clearSceneThrusterDimensions(tokenDocument) {
+    const profileName = getShipProfileName(tokenDocument);
+    if (!profileName) return;
+
+    const profiles = getSceneThrusterProfiles();
+    delete profiles[getSceneThrusterProfileKey(canvas.scene?.id, profileName)];
+    await game.settings.set(MODULE_ID, SCENE_THRUSTER_PROFILES_SETTING, profiles);
+}
+
+function showThrusterPreview(token, dimensions) {
+    if (!activeThrusterPreview || activeThrusterPreview.destroyed) {
+        activeThrusterPreview = createUnderTokenThruster(token);
+    }
+
+    activeThrusterPreview.alpha = 0.9;
+    drawThrusterCone(activeThrusterPreview, token, dimensions.rotation, dimensions);
+}
+
+function clearThrusterPreview() {
+    if (!activeThrusterPreview || activeThrusterPreview.destroyed) return;
+    activeThrusterPreview.destroy({ children: true });
+    activeThrusterPreview = null;
 }
 
 function getMovementSoundOptions(tokenDocument, providedProfile = null) {
