@@ -746,15 +746,15 @@ function createUnderTokenThruster(token) {
     graphics.eventMode = "none";
     graphics.interactive = false;
     graphics.zIndex = getTokenSortValue(token) - 1;
-    graphics.fullSpeedAheadTokenId = token.id;
 
-    placeThrusterUnderToken(graphics, token);
+    const layer = canvas.tokens;
+    layer.sortableChildren = true;
+    layer.addChildAt(graphics, 0);
     return graphics;
 }
 
 function drawThrusterCone(graphics, token, rotation, dimensions = null) {
     if (!graphics || graphics.destroyed) return;
-    placeThrusterUnderToken(graphics, token);
 
     const resolvedDimensions = normalizeThrusterConfig(dimensions ?? getThrusterDimensions(token.document), getThrusterColor(token));
     const centerX = token.x + token.w / 2;
@@ -770,6 +770,7 @@ function drawThrusterCone(graphics, token, rotation, dimensions = null) {
 
     graphics.clear();
     graphics.zIndex = getTokenSortValue(token) - 1;
+    keepThrusterBelowTokens(graphics);
 
     const coneCount = Math.max(1, Math.min(3, resolvedDimensions.coneCount));
     const scaleFactor = getThrusterScaleFactor(resolvedDimensions.scale);
@@ -821,27 +822,10 @@ function getTokenSortValue(token) {
     return Number.isFinite(token.mesh?.zIndex) ? token.mesh.zIndex : Number.isFinite(token.zIndex) ? token.zIndex : 0;
 }
 
-function placeThrusterUnderToken(graphics, token) {
-    const parent = token?.parent ?? canvas.tokens;
-    if (!parent || !graphics) return;
-
-    parent.sortableChildren = true;
-    graphics.zIndex = getTokenSortValue(token) - 1;
-    if (Number.isFinite(token.zIndex) && token.zIndex <= graphics.zIndex) token.zIndex = graphics.zIndex + 1;
-
-    if (graphics.parent !== parent) {
-        if (graphics.parent) graphics.parent.removeChild(graphics);
-        const tokenIndex = parent.children.indexOf(token);
-        if (tokenIndex >= 0) parent.addChildAt(graphics, tokenIndex);
-        else parent.addChild(graphics);
-        return;
-    }
-
-    const tokenIndex = parent.children.indexOf(token);
-    const graphicsIndex = parent.children.indexOf(graphics);
-    if (tokenIndex > 0 && graphicsIndex > tokenIndex) {
-        parent.setChildIndex(graphics, tokenIndex - 1);
-    }
+function keepThrusterBelowTokens(graphics) {
+    const layer = canvas.tokens;
+    if (!layer || graphics.parent !== layer) return;
+    if (layer.children.indexOf(graphics) > 0) layer.setChildIndex(graphics, 0);
 }
 
 function getThrusterColor(token) {
