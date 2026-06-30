@@ -47,7 +47,7 @@ class FullSpeedAheadEffectsConfig extends FormApplication {
             thrusterWidth: dimensions.width,
             coneCount: dimensions.coneCount,
             coneSpacing: dimensions.coneSpacing,
-            cones: dimensions.cones.map((cone, index) => ({ ...cone, number: index + 1 })),
+            extraCones: dimensions.cones.slice(1).map((cone, index) => ({ ...cone, number: index + 1 })),
             shipName: focusedShipName,
             tokenName: tokenDocument ? getDefaultShipProfileName(tokenDocument) : "",
             profileAssigned: tokenDocument ? getAssignedShipProfileName(tokenDocument) === focusedShipName : false,
@@ -120,14 +120,14 @@ class FullSpeedAheadEffectsConfig extends FormApplication {
             html.find('[data-sync-number="coneCount"]').val(dimensions.coneCount);
             html.find('[name="coneSpacing"]').val(dimensions.coneSpacing);
             html.find('[data-sync-number="coneSpacing"]').val(dimensions.coneSpacing);
-            dimensions.cones.forEach((cone, index) => {
+            dimensions.cones.slice(1).forEach((cone, index) => {
                 const number = index + 1;
-                html.find(`[name="cone${number}Color"]`).val(cone.color);
-                html.find(`[data-color-text="cone${number}Color"]`).val(cone.color);
-                html.find(`[name="cone${number}Length"]`).val(cone.length);
-                html.find(`[data-sync-number="cone${number}Length"]`).val(cone.length);
-                html.find(`[name="cone${number}Width"]`).val(cone.width);
-                html.find(`[data-sync-number="cone${number}Width"]`).val(cone.width);
+                html.find(`[name="extraCone${number}Color"]`).val(cone.color);
+                html.find(`[data-color-text="extraCone${number}Color"]`).val(cone.color);
+                html.find(`[name="extraCone${number}Length"]`).val(cone.length);
+                html.find(`[data-sync-number="extraCone${number}Length"]`).val(cone.length);
+                html.find(`[name="extraCone${number}Width"]`).val(cone.width);
+                html.find(`[data-sync-number="extraCone${number}Width"]`).val(cone.width);
             });
             html.find('[name="shipThrusterColor"]').val(color);
             html.find('[data-color-text="shipThrusterColor"]').val(color);
@@ -145,17 +145,20 @@ class FullSpeedAheadEffectsConfig extends FormApplication {
         const baseColor = normalizeHexColor(html.find("[name='shipThrusterColor']").val(), fallbackColor);
         const coneCount = Math.round(clampNumber(Number(html.find("[name='coneCount']").val()), 1, 3, 1));
         const coneSpacing = clampNumber(Number(html.find("[name='coneSpacing']").val()), 0, 6, 0.45);
-        const cones = [0, 1, 2].map(index => ({
-            color: normalizeHexColor(html.find(`[name='cone${index + 1}Color']`).val(), index === 0 ? baseColor : baseColor),
-            length: clampNumber(Number(html.find(`[name='cone${index + 1}Length']`).val()), 0.25, 12, baseLength),
-            width: clampNumber(Number(html.find(`[name='cone${index + 1}Width']`).val()), 0.1, 6, baseWidth)
-        }));
-
-        cones[0] = {
-            color: normalizeHexColor(cones[0].color, baseColor),
+        const cones = [{
+            color: baseColor,
             length: baseLength,
             width: baseWidth
-        };
+        }];
+
+        for (let index = 0; index < 2; index++) {
+            const number = index + 1;
+            cones.push({
+                color: normalizeHexColor(html.find(`[name='extraCone${number}Color']`).val(), baseColor),
+                length: clampNumber(Number(html.find(`[name='extraCone${number}Length']`).val()), 0.25, 12, baseLength),
+                width: clampNumber(Number(html.find(`[name='extraCone${number}Width']`).val()), 0.1, 6, baseWidth)
+            });
+        }
 
         return { scale, length: baseLength, width: baseWidth, color: baseColor, coneCount, coneSpacing, cones };
     }
