@@ -5,11 +5,12 @@
     "description": "Vehicle movement helpers for Foundry VTT: rotate vehicle tokens before they move, add movement sound effects, draw configurable thruster trails, and provide a ship targeting button for space combat.",
     "authors": [
         {
-            "name": "knoself",
-            "discord": "knoself"
+            "name": "OpenKyle",
+            "discord": "OpenKyle",
+            "url": "https://github.com/openkyle/full-speed-ahead"
         }
     ],
-    "version": "1.0.9",
+    "version": "1.0.10",
     "compatibility": {
         "minimum": "10",
         "verified": "11.312"

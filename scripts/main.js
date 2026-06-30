@@ -5,6 +5,7 @@ const INTERNAL_MOVE = "fullSpeedAheadInternalMove";
 const LOG_PREFIX = "[Full Speed Ahead]";
 const THRUSTER_COLOR_FLAG = "thrusterColor";
 const SHIP_PROFILES_SETTING = "shipProfiles";
+const DEFAULT_MOVEMENT_SOUND_PATH = "modules/full-speed-ahead/sounds/lockon.ogg";
 const lastTokenPositions = new Map();
 const activeMotionEffects = new Map();
 
@@ -29,11 +30,12 @@ class FullSpeedAheadEffectsConfig extends FormApplication {
         const focusedShipName = tokenDocument ? getShipProfileName(tokenDocument) : shipNames[0] ?? "";
         const focusedProfile = getShipProfile(focusedShipName);
         const defaultColor = game.settings.get(MODULE_ID, "thrusterColor");
+        const movementSound = getMovementSoundOptions(tokenDocument, focusedProfile);
 
         return {
             enableMovementSound: game.settings.get(MODULE_ID, "enableMovementSound"),
-            movementSoundPath: game.settings.get(MODULE_ID, "movementSoundPath"),
-            movementSoundVolume: game.settings.get(MODULE_ID, "movementSoundVolume"),
+            movementSoundPath: movementSound.src,
+            movementSoundVolume: movementSound.volume,
             enableThrusterEffect: game.settings.get(MODULE_ID, "enableThrusterEffect"),
             thrusterColor: defaultColor,
             thrusterLength: game.settings.get(MODULE_ID, "thrusterLength"),
@@ -56,8 +58,18 @@ class FullSpeedAheadEffectsConfig extends FormApplication {
             new FilePicker({
                 type: "audio",
                 current: input.val() || "",
-                callback: path => input.val(path)
+                callback: path => input.val(path).trigger("input")
             }).render(true);
+        });
+
+        html.find("[data-sync-range]").on("input", event => {
+            const key = event.currentTarget.dataset.syncRange;
+            html.find(`[data-sync-number="${key}"]`).val(event.currentTarget.value);
+        });
+
+        html.find("[data-sync-number]").on("input change", event => {
+            const key = event.currentTarget.dataset.syncNumber;
+            html.find(`[data-sync-range="${key}"]`).val(event.currentTarget.value);
         });
 
         html.find('[data-color-picker]').on("input", event => {
@@ -81,7 +93,11 @@ class FullSpeedAheadEffectsConfig extends FormApplication {
             const profileName = event.currentTarget.value;
             const profile = getShipProfile(profileName);
             const defaultColor = game.settings.get(MODULE_ID, "thrusterColor");
+            const movementSound = getMovementSoundOptions(null, profile);
             const color = profile?.thrusterColor ?? defaultColor;
+            html.find('[name="movementSoundPath"]').val(movementSound.src);
+            html.find('[name="movementSoundVolume"]').val(movementSound.volume);
+            html.find('[data-sync-number="movementSoundVolume"]').val(movementSound.volume);
             html.find('[name="useShipThrusterColor"]').prop("checked", Boolean(profile?.thrusterColor));
             html.find('[data-ship-color-fields]').toggle(Boolean(profile?.thrusterColor));
             html.find('[name="shipThrusterColor"]').val(color);
@@ -92,8 +108,6 @@ class FullSpeedAheadEffectsConfig extends FormApplication {
     async _updateObject(event, formData) {
         const updates = {
             enableMovementSound: Boolean(formData.enableMovementSound),
-            movementSoundPath: String(formData.movementSoundPath ?? "").trim(),
-            movementSoundVolume: Number(formData.movementSoundVolume),
             enableThrusterEffect: Boolean(formData.enableThrusterEffect),
             thrusterColor: String(formData.thrusterColor ?? "#40c7ff").trim(),
             thrusterLength: Number(formData.thrusterLength),
@@ -106,20 +120,29 @@ class FullSpeedAheadEffectsConfig extends FormApplication {
 
         const tokenDocument = this.tokenDocument;
         const profileName = String(formData.shipProfileName ?? (tokenDocument ? getShipProfileName(tokenDocument) : "")).trim();
-        if (!profileName) return;
+        if (!profileName) {
+            await game.settings.set(MODULE_ID, "movementSoundPath", String(formData.movementSoundPath ?? "").trim());
+            await game.settings.set(MODULE_ID, "movementSoundVolume", clampNumber(Number(formData.movementSoundVolume), 0, 1, game.settings.get(MODULE_ID, "movementSoundVolume")));
+            return;
+        }
 
         const profiles = getShipProfiles();
         const profileKey = normalizeShipProfileName(profileName);
+        const profile = {
+            ...(profiles[profileKey] ?? {}),
+            name: profileName,
+            movementSoundPath: String(formData.movementSoundPath ?? "").trim(),
+            movementSoundVolume: clampNumber(Number(formData.movementSoundVolume), 0, 1, game.settings.get(MODULE_ID, "movementSoundVolume"))
+        };
+
         if (formData.useShipThrusterColor) {
             const shipColor = String(formData.shipThrusterColor ?? updates.thrusterColor).trim();
-            profiles[profileKey] = {
-                name: profileName,
-                thrusterColor: /^#[0-9a-f]{6}$/i.test(shipColor) ? shipColor : updates.thrusterColor
-            };
+            profile.thrusterColor = /^#[0-9a-f]{6}$/i.test(shipColor) ? shipColor : updates.thrusterColor;
         } else {
-            delete profiles[profileKey];
+            delete profile.thrusterColor;
         }
 
+        profiles[profileKey] = profile;
         await game.settings.set(MODULE_ID, SHIP_PROFILES_SETTING, profiles);
     }
 }
@@ -219,7 +242,7 @@ Hooks.once("init", () => {
         name: "Movement Sound Path",
         hint: "Path to a movement sound. Defaults to the bundled lock-on sound until you add a dedicated thruster audio file.",
         type: String,
-        default: "modules/full-speed-ahead/sounds/lockon.ogg",
+        default: DEFAULT_MOVEMENT_SOUND_PATH,
         config: false
     });
 
@@ -328,7 +351,7 @@ Hooks.on("updateToken", (tokenDocument, changes, options, userId) => {
     if (!hasMovement(changes)) return;
     if (!isVehicleDocument(tokenDocument)) return;
 
-    playMovementSound(userId);
+    playMovementSound(tokenDocument, userId);
     startVehicleMotionEffects(tokenDocument, options);
 });
 
@@ -447,16 +470,21 @@ function getSettingNumber(key, fallback) {
     return Number.isFinite(value) ? value : fallback;
 }
 
-function playMovementSound(userId) {
+function clampNumber(value, min, max, fallback) {
+    if (!Number.isFinite(value)) return fallback;
+    return Math.max(min, Math.min(max, value));
+}
+
+function playMovementSound(tokenDocument, userId) {
     if (!game.settings.get(MODULE_ID, "enableMovementSound")) return;
     if (userId && game.user.id !== userId) return;
 
-    const src = game.settings.get(MODULE_ID, "movementSoundPath")?.trim();
+    const { src, volume } = getMovementSoundOptions(tokenDocument);
     if (!src) return;
 
     AudioHelper.play({
         src,
-        volume: getSettingNumber("movementSoundVolume", 0.18),
+        volume,
         autoplay: true,
         loop: false
     }, true);
@@ -663,6 +691,21 @@ function getTokenSortValue(token) {
 function getThrusterColor(token) {
     const profile = getShipProfile(getShipProfileName(token.document));
     return profile?.thrusterColor ?? token.document?.getFlag(MODULE_ID, THRUSTER_COLOR_FLAG) ?? game.settings.get(MODULE_ID, "thrusterColor");
+}
+
+function getMovementSoundOptions(tokenDocument, providedProfile = null) {
+    const profile = providedProfile ?? getShipProfile(getShipProfileName(tokenDocument));
+    const hasProfilePath = Object.prototype.hasOwnProperty.call(profile ?? {}, "movementSoundPath");
+    const hasProfileVolume = Object.prototype.hasOwnProperty.call(profile ?? {}, "movementSoundVolume");
+    const src = String(hasProfilePath ? profile.movementSoundPath : game.settings.get(MODULE_ID, "movementSoundPath") ?? DEFAULT_MOVEMENT_SOUND_PATH).trim();
+    const volume = clampNumber(
+        Number(hasProfileVolume ? profile.movementSoundVolume : game.settings.get(MODULE_ID, "movementSoundVolume")),
+        0,
+        1,
+        0.18
+    );
+
+    return { src, volume };
 }
 
 function getShipProfiles() {
