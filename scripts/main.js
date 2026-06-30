@@ -19,7 +19,7 @@ class FullSpeedAheadThrusterConfig extends FormApplication {
             title: "Full Speed Ahead: Thruster Tuning",
             template: `modules/${MODULE_ID}/templates/thruster-settings.hbs`,
             width: 360,
-            closeOnSubmit: false
+            closeOnSubmit: true
         });
     }
 
@@ -30,12 +30,14 @@ class FullSpeedAheadThrusterConfig extends FormApplication {
     getData() {
         const tokenDocument = this.tokenDocument;
         const dimensions = getThrusterDimensions(tokenDocument);
+        const color = getThrusterColorForTokenDocument(tokenDocument);
 
         return {
             shipName: getShipProfileName(tokenDocument),
             sceneName: canvas.scene?.name ?? "",
             thrusterLength: dimensions.length,
-            thrusterWidth: dimensions.width
+            thrusterWidth: dimensions.width,
+            shipThrusterColor: color
         };
     }
 
@@ -56,6 +58,21 @@ class FullSpeedAheadThrusterConfig extends FormApplication {
         });
         html.find("[data-sync-number]").on("change", () => this.saveFromForm(html));
 
+        html.find('[data-color-picker]').on("input", event => {
+            const target = event.currentTarget.dataset.colorPicker;
+            html.find(`[data-color-text="${target}"]`).val(event.currentTarget.value);
+            this.previewFromForm(html);
+        });
+
+        html.find('[data-color-text]').on("input change", event => {
+            const value = event.currentTarget.value.trim();
+            if (!/^#[0-9a-f]{6}$/i.test(value)) return;
+
+            const target = event.currentTarget.dataset.colorText;
+            html.find(`[data-color-picker="${target}"]`).val(value);
+            this.previewFromForm(html);
+        });
+
         html.find("[data-action='reset-thruster-scene']").on("click", async event => {
             event.preventDefault();
             await clearSceneThrusterDimensions(this.tokenDocument);
@@ -72,6 +89,12 @@ class FullSpeedAheadThrusterConfig extends FormApplication {
         };
     }
 
+    getColorFromForm(html) {
+        const fallbackColor = getThrusterColorForTokenDocument(this.tokenDocument);
+        const color = String(html.find("[name='shipThrusterColor']").val() ?? fallbackColor).trim();
+        return /^#[0-9a-f]{6}$/i.test(color) ? color : fallbackColor;
+    }
+
     previewFromForm(html) {
         const tokenDocument = this.tokenDocument;
         const token = canvas.tokens?.get(tokenDocument?.id);
@@ -79,11 +102,14 @@ class FullSpeedAheadThrusterConfig extends FormApplication {
 
         const dimensions = this.getDimensionsFromForm(html);
         const rotation = normalizeDegrees(tokenDocument.rotation ?? token.rotation ?? 0);
-        showThrusterPreview(token, { ...dimensions, rotation });
+        showThrusterPreview(token, { ...dimensions, rotation, color: this.getColorFromForm(html) });
     }
 
     saveFromForm(html) {
-        setSceneThrusterDimensions(this.tokenDocument, this.getDimensionsFromForm(html))
+        Promise.all([
+            setSceneThrusterDimensions(this.tokenDocument, this.getDimensionsFromForm(html)),
+            setShipThrusterColor(this.tokenDocument, this.getColorFromForm(html))
+        ])
             .catch(error => console.warn(`${LOG_PREFIX} Could not save thruster tuning.`, error));
     }
 
@@ -92,6 +118,7 @@ class FullSpeedAheadThrusterConfig extends FormApplication {
             length: Number(formData.thrusterLength),
             width: Number(formData.thrusterWidth)
         });
+        await setShipThrusterColor(this.tokenDocument, String(formData.shipThrusterColor ?? "").trim());
         clearThrusterPreview();
     }
 
@@ -759,7 +786,7 @@ function drawThrusterCone(graphics, token, rotation, dimensions = null) {
     const resolvedDimensions = dimensions ?? getThrusterDimensions(token.document);
     const length = resolvedDimensions.length * canvas.grid.size;
     const width = resolvedDimensions.width * canvas.grid.size;
-    const color = hexToNumber(getThrusterColor(token), 0x40c7ff);
+    const color = hexToNumber(dimensions?.color ?? getThrusterColor(token), 0x40c7ff);
     const centerX = token.x + token.w / 2;
     const centerY = token.y + token.h / 2;
     const radians = normalizeDegrees(rotation) * Math.PI / 180;
@@ -804,8 +831,29 @@ function getTokenSortValue(token) {
 }
 
 function getThrusterColor(token) {
-    const profile = getShipProfile(getShipProfileName(token.document));
-    return profile?.thrusterColor ?? token.document?.getFlag(MODULE_ID, THRUSTER_COLOR_FLAG) ?? game.settings.get(MODULE_ID, "thrusterColor");
+    return getThrusterColorForTokenDocument(token.document);
+}
+
+function getThrusterColorForTokenDocument(tokenDocument) {
+    const profile = getShipProfile(getShipProfileName(tokenDocument));
+    const fallbackColor = game.settings.get(MODULE_ID, "thrusterColor") || DEFAULT_THRUSTER_COLOR;
+    return profile?.thrusterColor ?? tokenDocument?.getFlag(MODULE_ID, THRUSTER_COLOR_FLAG) ?? fallbackColor;
+}
+
+async function setShipThrusterColor(tokenDocument, color) {
+    const profileName = getShipProfileName(tokenDocument);
+    if (!profileName) return;
+
+    const fallbackColor = game.settings.get(MODULE_ID, "thrusterColor") || DEFAULT_THRUSTER_COLOR;
+    const normalizedColor = /^#[0-9a-f]{6}$/i.test(color) ? color : fallbackColor;
+    const profiles = getShipProfiles();
+    const profileKey = normalizeShipProfileName(profileName);
+    profiles[profileKey] = {
+        ...(profiles[profileKey] ?? {}),
+        name: profileName,
+        thrusterColor: normalizedColor
+    };
+    await game.settings.set(MODULE_ID, SHIP_PROFILES_SETTING, profiles);
 }
 
 function getThrusterDimensions(tokenDocument) {
